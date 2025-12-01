@@ -1,0 +1,6 @@
+[package]
+name = "gateway"
+edition = "2024"
+version = "0.1.0"
+
+[dependencies]
