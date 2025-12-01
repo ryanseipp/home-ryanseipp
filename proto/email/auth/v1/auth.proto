@@ -1,0 +1,75 @@
+syntax = "proto3";
+
+package email.auth.v1;
+
+// Envelope message for all auth-related emails
+message AuthEmailMessage {
+  // Idempotency key for Resend deduplication (required)
+  string idempotency_key = 1;
+
+  // Recipient email address
+  string recipient_email = 2;
+
+  // Optional recipient name for personalization
+  string recipient_name = 3;
+
+  // OpenTelemetry trace context for correlation
+  string trace_id = 4;
+  string span_id = 5;
+
+  // Timestamp when the message was produced (milliseconds since epoch)
+  int64 produced_at_ms = 6;
+
+  // The specific email type (oneof for type safety)
+  oneof payload {
+    EmailVerification email_verification = 10;
+    PasswordReset password_reset = 11;
+    ChangeEmail change_email = 12;
+    PasswordChanged password_changed = 13;
+    TwoFactorSetup two_factor_setup = 14;
+    TwoFactorEnabled two_factor_enabled = 15;
+  }
+}
+
+// Email verification - sent when user registers
+message EmailVerification {
+  string verification_code = 1;
+  string verification_link = 2;
+  int32 expires_in_minutes = 3;
+}
+
+// Password reset request
+message PasswordReset {
+  string reset_code = 1;
+  string reset_link = 2;
+  int32 expires_in_minutes = 3;
+  string request_ip = 4;
+  string request_location = 5;
+}
+
+// Email change confirmation - sent to NEW email
+message ChangeEmail {
+  string old_email = 1;
+  string confirmation_code = 2;
+  string confirmation_link = 3;
+  int32 expires_in_minutes = 4;
+}
+
+// Password was successfully changed - notification
+message PasswordChanged {
+  int64 changed_at_ms = 1;
+  string change_ip = 2;
+  string change_location = 3;
+}
+
+// Two-factor setup initiated
+message TwoFactorSetup {
+  string setup_code = 1;
+  int32 expires_in_minutes = 2;
+}
+
+// Two-factor successfully enabled - notification
+message TwoFactorEnabled {
+  int64 enabled_at_ms = 1;
+  string backup_codes_hint = 2;
+}

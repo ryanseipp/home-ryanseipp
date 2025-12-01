@@ -47,7 +47,7 @@ provenance, and has an available SBOM.
 
 ### Getting Started
 
-This monorepo supports Rust, .NET, and Java/Quarkus services. To start developing:
+This monorepo supports Rust, .NET, Java/Quarkus, and Deno services. To start developing:
 
 ```bash
 # Enter the Nix development environment
@@ -57,6 +57,7 @@ nix develop
 # - Rust toolchain with cargo, rustc
 # - .NET 10 SDK
 # - JDK 25 + Gradle for Quarkus services
+# - Deno runtime
 # - GraalVM for native image compilation
 # - Native toolchain (clang, zlib) for NativeAOT
 # - Infrastructure tools (kubectl, helm, etc.)
@@ -167,3 +168,47 @@ Java services use Quarkus with GraalVM native image compilation:
    Note: The `rootProject.name` in `settings.gradle.kts` must match the service
    directory name. Nix builds with GraalVM native image and expects the Quarkus
    `build/*-runner` output.
+
+#### Deno Services
+
+Deno services are compiled to standalone executables:
+
+1. Create your service in `services/`:
+
+   ```bash
+   cd services
+   mkdir my-service && cd my-service
+   deno init
+   ```
+
+2. Configure `deno.json` with required tasks:
+
+   ```json
+   {
+     "tasks": {
+       "compile": "deno compile --output my-service src/index.ts",
+       "test": "deno test --allow-all"
+     }
+   }
+   ```
+
+   | Task      | Purpose                                            |
+   | --------- | -------------------------------------------------- |
+   | `compile` | Compiles to standalone executable (output must match service name) |
+   | `test`    | Runs tests during Nix build                        |
+
+3. Generate the lock file:
+
+   ```bash
+   deno install
+   ```
+
+   This creates `deno.lock` which must be committed to the repository.
+
+4. Add to `flake.nix`:
+   ```nix
+   denoServices = [ "my-service" ];
+   ```
+
+   Note: The compiled output filename must match the service directory name.
+   Nix expects the binary at `services/my-service/my-service`.

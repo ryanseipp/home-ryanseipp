@@ -76,6 +76,26 @@
         "type": "github"
       }
     },
+    "nix-deno": {
+      "inputs": {
+        "nixpkgs": [
+          "nixpkgs"
+        ]
+      },
+      "locked": {
+        "lastModified": 1748076591,
+        "narHash": "sha256-zfcYlOBYGfp4uxPC9ctaWf37bjZagbQ0pw7mqgTqfBI=",
+        "owner": "nekowinston",
+        "repo": "nix-deno",
+        "rev": "0b22de7dd34c7d7c7cd46cedee0b65592dc57d3e",
+        "type": "github"
+      },
+      "original": {
+        "owner": "nekowinston",
+        "repo": "nix-deno",
+        "type": "github"
+      }
+    },
     "nixpkgs": {
       "locked": {
         "lastModified": 1764517877,
@@ -132,6 +152,7 @@
         "build-gradle-application": "build-gradle-application",
         "crane": "crane",
         "flake-parts": "flake-parts_2",
+        "nix-deno": "nix-deno",
         "nixpkgs": "nixpkgs",
         "nuget-packageslock2nix": "nuget-packageslock2nix",
         "rust-overlay": "rust-overlay",

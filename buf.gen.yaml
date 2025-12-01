@@ -1,0 +1,11 @@
+version: v2
+plugins:
+  - remote: buf.build/community/stephenh-ts-proto
+    out: services/email/src/generated
+    opt:
+      - esModuleInterop=true
+      - outputServices=false
+      - oneof=unions
+      - useOptionals=messages
+      - exportCommonSymbols=false
+      - importSuffix=.ts

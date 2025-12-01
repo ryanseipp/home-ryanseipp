@@ -25,6 +25,11 @@
       url = "github:raphiz/buildGradleApplication";
       inputs.nixpkgs.follows = "nixpkgs";
     };
+
+    nix-deno = {
+      url = "github:nekowinston/nix-deno";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
   };
 
   outputs =
@@ -36,6 +41,7 @@
         ./nix/rust.nix
         ./nix/dotnet.nix
         ./nix/java.nix
+        ./nix/deno.nix
         ./nix/treefmt.nix
         ./nix/devshell.nix
       ];
@@ -57,6 +63,7 @@
           ];
           dotnetServices = [ "testdotnet" ];
           javaServices = [ "testjava" ];
+          denoServices = [ "email" ];
         };
     };
 }

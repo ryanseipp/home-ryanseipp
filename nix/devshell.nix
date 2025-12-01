@@ -19,7 +19,8 @@
       );
 
       # Collect all service packages for inputsFrom
-      allServiceNames = config.rustServices ++ config.dotnetServices ++ config.javaServices;
+      allServiceNames =
+        config.rustServices ++ config.dotnetServices ++ config.javaServices ++ config.denoServices;
       servicePackages = map (name: config.packages.${name}) allServiceNames;
     in
     {
@@ -30,9 +31,12 @@
 
         packages = with pkgs; [
           argocd
+          buf
           cargo-watch
           cilium-cli
           clang
+          corepack_24
+          deno
           dotnetCorePackages.sdk_10_0
           gcc
           graalvmPackages.graalvm-ce

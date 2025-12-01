@@ -1,0 +1,8 @@
+# Generated protobuf code
+src/generated/
+
+# Deno cache
+.deno/
+
+# Compiled binary (from deno compile)
+email
