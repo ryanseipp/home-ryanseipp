@@ -19,7 +19,7 @@
       );
 
       # Collect all service packages for inputsFrom
-      allServiceNames = config.rustServices ++ config.dotnetServices;
+      allServiceNames = config.rustServices ++ config.dotnetServices ++ config.javaServices;
       servicePackages = map (name: config.packages.${name}) allServiceNames;
     in
     {
@@ -34,7 +34,10 @@
           cilium-cli
           clang
           dotnetCorePackages.sdk_10_0
+          gcc
+          graalvmPackages.graalvm-ce
           helmfile
+          jdk25
           k9s
           kind
           kubectl
@@ -42,6 +45,7 @@
           kubernetes-helm
           kustomize
           opentofu
+          quarkus
           yq-go
           zlib.dev
         ];

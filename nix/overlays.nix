@@ -8,6 +8,7 @@
         inherit system;
         overlays = [
           (import inputs.rust-overlay)
+          inputs.build-gradle-application.overlays.default
         ];
       };
     };

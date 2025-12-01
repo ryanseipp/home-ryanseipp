@@ -47,7 +47,7 @@ provenance, and has an available SBOM.
 
 ### Getting Started
 
-This monorepo supports both Rust and .NET services. To start developing:
+This monorepo supports Rust, .NET, and Java/Quarkus services. To start developing:
 
 ```bash
 # Enter the Nix development environment
@@ -56,6 +56,8 @@ nix develop
 # The dev shell includes:
 # - Rust toolchain with cargo, rustc
 # - .NET 10 SDK
+# - JDK 25 + Gradle for Quarkus services
+# - GraalVM for native image compilation
 # - Native toolchain (clang, zlib) for NativeAOT
 # - Infrastructure tools (kubectl, helm, etc.)
 ```
@@ -127,3 +129,41 @@ Rust services use Cargo workspaces and are managed via Crane:
 
    Note: The `.csproj` filename must match the service directory name (e.g.,
    `services/my-service/my-service.csproj`).
+
+#### Java/Quarkus Services
+
+Java services use Quarkus with GraalVM native image compilation:
+
+1. Create your service in `services/`:
+
+   ```bash
+   cd services
+   quarkus create app my-service --gradle-kotlin-dsl
+   ```
+
+2. Configure `build.gradle.kts` for Java 25:
+
+   ```kotlin
+   java {
+     sourceCompatibility = JavaVersion.VERSION_25
+     targetCompatibility = JavaVersion.VERSION_25
+   }
+   ```
+
+3. Add Gradle wrapper with SHA256 checksum:
+
+   ```bash
+   gradle wrapper
+   ```
+
+   Edit `gradle/wrapper/gradle-wrapper.properties` to include
+   `distributionSha256Sum` (find checksums at https://gradle.org/release-checksums/).
+
+4. Add to `flake.nix`:
+   ```nix
+   javaServices = [ "my-service" ];
+   ```
+
+   Note: The `rootProject.name` in `settings.gradle.kts` must match the service
+   directory name. Nix builds with GraalVM native image and expects the Quarkus
+   `build/*-runner` output.

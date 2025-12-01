@@ -20,6 +20,11 @@
       url = "github:mdarocha/nuget-packageslock2nix";
       inputs.nixpkgs.follows = "nixpkgs";
     };
+
+    build-gradle-application = {
+      url = "github:raphiz/buildGradleApplication";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
   };
 
   outputs =
@@ -30,6 +35,7 @@
         ./nix/overlays.nix
         ./nix/rust.nix
         ./nix/dotnet.nix
+        ./nix/java.nix
         ./nix/treefmt.nix
         ./nix/devshell.nix
       ];
@@ -50,6 +56,7 @@
             "identity"
           ];
           dotnetServices = [ "testdotnet" ];
+          javaServices = [ "testjava" ];
         };
     };
 }
