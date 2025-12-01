@@ -81,5 +81,49 @@ Rust services use Cargo workspaces and are managed via Crane:
 
 3. Add to `flake.nix`:
    ```nix
-   my-service = buildRustService "my-service";
+   rustServices = [ "my-service" ];
    ```
+
+#### .NET Services
+
+.NET services are built with NativeAOT for standalone executables:
+
+1. Create your service in `services/`:
+
+   ```bash
+   cd services
+   dotnet new web -n my-service
+   ```
+
+2. Configure your `.csproj` with required properties:
+
+   ```xml
+   <PropertyGroup>
+     <TargetFramework>net10.0</TargetFramework>
+     <PublishAot>true</PublishAot>
+     <RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>
+     <InvariantGlobalization>true</InvariantGlobalization>
+   </PropertyGroup>
+   ```
+
+   | Property                       | Purpose                                        |
+   | ------------------------------ | ---------------------------------------------- |
+   | `PublishAot`                   | Enables NativeAOT compilation                  |
+   | `RestorePackagesWithLockFile`  | Generates `packages.lock.json` required by Nix |
+   | `InvariantGlobalization`       | Avoids ICU dependency issues in NativeAOT      |
+
+3. Generate the lock file:
+
+   ```bash
+   dotnet restore
+   ```
+
+   This creates `packages.lock.json` which must be committed to the repository.
+
+4. Add to `flake.nix`:
+   ```nix
+   dotnetServices = [ "my-service" ];
+   ```
+
+   Note: The `.csproj` filename must match the service directory name (e.g.,
+   `services/my-service/my-service.csproj`).

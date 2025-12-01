@@ -15,6 +15,11 @@
       url = "github:oxalica/rust-overlay";
       inputs.nixpkgs.follows = "nixpkgs";
     };
+
+    nuget-packageslock2nix = {
+      url = "github:mdarocha/nuget-packageslock2nix";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
   };
 
   outputs =
@@ -24,6 +29,7 @@
         inputs.treefmt-nix.flakeModule
         ./nix/overlays.nix
         ./nix/rust.nix
+        ./nix/dotnet.nix
         ./nix/treefmt.nix
         ./nix/devshell.nix
       ];
@@ -43,6 +49,7 @@
             "gateway"
             "identity"
           ];
+          dotnetServices = [ "testdotnet" ];
         };
     };
 }

@@ -19,7 +19,7 @@
       );
 
       # Collect all service packages for inputsFrom
-      allServiceNames = config.rustServices;
+      allServiceNames = config.rustServices ++ config.dotnetServices;
       servicePackages = map (name: config.packages.${name}) allServiceNames;
     in
     {
@@ -33,6 +33,7 @@
           cargo-watch
           cilium-cli
           clang
+          dotnetCorePackages.sdk_10_0
           helmfile
           k9s
           kind

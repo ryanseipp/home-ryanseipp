@@ -64,11 +64,32 @@
         "type": "github"
       }
     },
+    "nuget-packageslock2nix": {
+      "inputs": {
+        "nixpkgs": [
+          "nixpkgs"
+        ]
+      },
+      "locked": {
+        "lastModified": 1764030412,
+        "narHash": "sha256-aGLFW3C2nBjEGvBeaaWul1KcKi8PdJ9izangxxZ1Spo=",
+        "owner": "mdarocha",
+        "repo": "nuget-packageslock2nix",
+        "rev": "90b30d602c03bfb62379d2f7c1dbd72c44ef9824",
+        "type": "github"
+      },
+      "original": {
+        "owner": "mdarocha",
+        "repo": "nuget-packageslock2nix",
+        "type": "github"
+      }
+    },
     "root": {
       "inputs": {
         "crane": "crane",
         "flake-parts": "flake-parts",
         "nixpkgs": "nixpkgs",
+        "nuget-packageslock2nix": "nuget-packageslock2nix",
         "rust-overlay": "rust-overlay",
         "treefmt-nix": "treefmt-nix"
       }
