@@ -7,10 +7,12 @@ import type {
   PasswordReset,
   TwoFactorEnabled,
   TwoFactorSetup,
-} from "../../generated/email/auth/v1/auth.ts";
-import { AuthEmailMessage as AuthEmailMessageCodec } from "../../generated/email/auth/v1/auth.ts";
+} from "../../generated/ryanseipp/email/v1/auth.ts";
+import { AuthEmailMessage as AuthEmailMessageCodec } from "../../generated/ryanseipp/email/v1/auth.ts";
 
-export function createMessageMetadata(overrides: Partial<MessageMetadata> = {}): MessageMetadata {
+export function createMessageMetadata(
+  overrides: Partial<MessageMetadata> = {},
+): MessageMetadata {
   return {
     topic: "auth.email.v1",
     partition: 0,
@@ -19,7 +21,9 @@ export function createMessageMetadata(overrides: Partial<MessageMetadata> = {}):
   };
 }
 
-export function createBaseMessage(overrides: Partial<AuthEmailMessage> = {}): AuthEmailMessage {
+export function createBaseMessage(
+  overrides: Partial<AuthEmailMessage> = {},
+): AuthEmailMessage {
   return {
     idempotencyKey: "test-idempotency-key-123",
     recipientEmail: "test@example.com",

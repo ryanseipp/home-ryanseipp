@@ -1,6 +1,6 @@
 import { type Consumer, type EachMessagePayload, Kafka, logLevel, type SASLOptions } from "kafkajs";
 import { config } from "../config.ts";
-import { AuthEmailMessage } from "../generated/email/auth/v1/auth.ts";
+import { AuthEmailMessage } from "../generated/ryanseipp/email/v1/auth.ts";
 import { handleAuthEmailMessage } from "./handler.ts";
 
 let consumer: Consumer | undefined;
@@ -14,7 +14,11 @@ export async function startConsumer(): Promise<void> {
     logLevel: logLevel.INFO,
     logCreator: () => ({ namespace, level, log }) => {
       const { message, ...extra } = log;
-      console.info(`[kafka] ${message}`, { namespace, kafkaLevel: level, ...extra });
+      console.info(`[kafka] ${message}`, {
+        namespace,
+        kafkaLevel: level,
+        ...extra,
+      });
     },
   });
 
@@ -39,7 +43,11 @@ export async function startConsumer(): Promise<void> {
 
       try {
         if (!message.value) {
-          console.warn("Empty message received", { topic, partition, offset: message.offset });
+          console.warn("Empty message received", {
+            topic,
+            partition,
+            offset: message.offset,
+          });
           return;
         }
 
@@ -77,7 +85,10 @@ export async function startConsumer(): Promise<void> {
     },
   });
 
-  console.info("Consumer started", { topic: "email.auth", groupId: config.kafka.groupId });
+  console.info("Consumer started", {
+    topic: "email.auth",
+    groupId: config.kafka.groupId,
+  });
 }
 
 export async function stopConsumer(): Promise<void> {

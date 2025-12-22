@@ -1,6 +1,6 @@
 import type { ReactElement } from "react";
 import { NotionMagicLinkEmail } from "../../emails/notion-magic-link.tsx";
-import type { AuthEmailMessage } from "../generated/email/auth/v1/auth.ts";
+import type { AuthEmailMessage } from "../generated/ryanseipp/email/v1/auth.ts";
 
 export type { AuthEmailMessage };
 

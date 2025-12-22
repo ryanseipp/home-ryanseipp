@@ -1,0 +1,88 @@
+syntax = "proto3";
+
+package ryanseipp.identity.v1;
+
+import "google/api/annotations.proto";
+import "google/protobuf/timestamp.proto";
+
+// Identity service handles user authentication and authorization
+service IdentityService {
+  // Register a new user account
+  rpc SignUp(SignUpRequest) returns (SignUpResponse) {
+    option (google.api.http) = {
+      post: "/api/v1/sign-up"
+      body: "*"
+    };
+  }
+
+  // Authenticate user with email and password
+  rpc Login(LoginRequest) returns (LoginResponse) {
+    option (google.api.http) = {
+      post: "/api/v1/login"
+      body: "*"
+    };
+  }
+
+  rpc UserInfo(UserInfoRequest) returns (UserInfoResponse) {
+    option (google.api.http) = {
+      get: "/api/v1/userinfo"
+      body: "*"
+    };
+  }
+
+  rpc GetJwks(GetJwksRequest) returns (GetJwksResponse) {
+    option (google.api.http) = {
+      post: ".well-known/jwks.json"
+      body: "keys"
+    };
+  }
+}
+
+// User signup request
+message SignUpRequest {
+  string username = 1;
+  string given_name = 2;
+  string family_name = 3;
+  string email = 4;
+
+  // Optional so that we may eventually support OIDC login
+  optional string password = 5;
+}
+
+// User signup response
+message SignUpResponse {}
+
+// User login request
+message LoginRequest {
+  string username = 1;
+  string password = 2;
+}
+
+// User login response
+message LoginResponse {
+  string access_token = 1;
+  string refresh_token = 2;
+  string id_token = 3;
+
+  google.protobuf.Timestamp expires_at = 100;
+}
+
+message UserInfoRequest {}
+
+message UserInfoResponse {
+  string sub = 1;
+  string name = 2;
+  string given_name = 3;
+  string family_name = 4;
+  string username = 5;
+  string email = 6;
+  bool email_verified = 7;
+
+  google.protobuf.Timestamp updated_at = 100;
+}
+
+message GetJwksRequest {}
+
+message GetJwksResponse {
+  string keys = 1;
+}

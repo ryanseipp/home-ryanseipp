@@ -47,7 +47,8 @@ provenance, and has an available SBOM.
 
 ### Getting Started
 
-This monorepo supports Rust, .NET, Java/Quarkus, and Deno services. To start developing:
+This monorepo supports Rust, .NET, Java/Quarkus, and Deno services. To start
+developing:
 
 ```bash
 # Enter the Nix development environment
@@ -109,11 +110,11 @@ Rust services use Cargo workspaces and are managed via Crane:
    </PropertyGroup>
    ```
 
-   | Property                       | Purpose                                        |
-   | ------------------------------ | ---------------------------------------------- |
-   | `PublishAot`                   | Enables NativeAOT compilation                  |
-   | `RestorePackagesWithLockFile`  | Generates `packages.lock.json` required by Nix |
-   | `InvariantGlobalization`       | Avoids ICU dependency issues in NativeAOT      |
+   | Property                      | Purpose                                        |
+   | ----------------------------- | ---------------------------------------------- |
+   | `PublishAot`                  | Enables NativeAOT compilation                  |
+   | `RestorePackagesWithLockFile` | Generates `packages.lock.json` required by Nix |
+   | `InvariantGlobalization`      | Avoids ICU dependency issues in NativeAOT      |
 
 3. Generate the lock file:
 
@@ -124,6 +125,7 @@ Rust services use Cargo workspaces and are managed via Crane:
    This creates `packages.lock.json` which must be committed to the repository.
 
 4. Add to `flake.nix`:
+
    ```nix
    dotnetServices = [ "my-service" ];
    ```
@@ -158,9 +160,11 @@ Java services use Quarkus with GraalVM native image compilation:
    ```
 
    Edit `gradle/wrapper/gradle-wrapper.properties` to include
-   `distributionSha256Sum` (find checksums at https://gradle.org/release-checksums/).
+   `distributionSha256Sum` (find checksums at
+   https://gradle.org/release-checksums/).
 
 4. Add to `flake.nix`:
+
    ```nix
    javaServices = [ "my-service" ];
    ```
@@ -192,10 +196,10 @@ Deno services are compiled to standalone executables:
    }
    ```
 
-   | Task      | Purpose                                            |
-   | --------- | -------------------------------------------------- |
+   | Task      | Purpose                                                            |
+   | --------- | ------------------------------------------------------------------ |
    | `compile` | Compiles to standalone executable (output must match service name) |
-   | `test`    | Runs tests during Nix build                        |
+   | `test`    | Runs tests during Nix build                                        |
 
 3. Generate the lock file:
 
@@ -206,9 +210,10 @@ Deno services are compiled to standalone executables:
    This creates `deno.lock` which must be committed to the repository.
 
 4. Add to `flake.nix`:
+
    ```nix
    denoServices = [ "my-service" ];
    ```
 
-   Note: The compiled output filename must match the service directory name.
-   Nix expects the binary at `services/my-service/my-service`.
+   Note: The compiled output filename must match the service directory name. Nix
+   expects the binary at `services/my-service/my-service`.

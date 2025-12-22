@@ -1,4 +1,4 @@
-import type { AuthEmailMessage } from "../generated/email/auth/v1/auth.ts";
+import type { AuthEmailMessage } from "../generated/ryanseipp/email/v1/auth.ts";
 import {
   recordEmailFailed as defaultRecordEmailFailed,
   recordEmailSent as defaultRecordEmailSent,
@@ -21,7 +21,11 @@ export interface MessageMetadata {
 export interface HandlerDependencies {
   sendEmail: (params: SendEmailParams, client: Resend) => Promise<SendResult>;
   recordEmailSent: (emailType: string, durationMs: number) => void;
-  recordEmailFailed: (emailType: string, errorType: string, durationMs: number) => void;
+  recordEmailFailed: (
+    emailType: string,
+    errorType: string,
+    durationMs: number,
+  ) => void;
   resendClient: Resend;
 }
 
@@ -62,7 +66,10 @@ export async function handleAuthEmailMessage(
   try {
     // 1. Get email content (React element + subject)
     const content = getAuthEmailContent(message);
-    console.debug("Email content prepared", { ...ctx, subject: content.subject });
+    console.debug("Email content prepared", {
+      ...ctx,
+      subject: content.subject,
+    });
 
     // 2. Send via Resend (renders React to HTML internally)
     const result = await deps.sendEmail(
@@ -83,8 +90,15 @@ export async function handleAuthEmailMessage(
 
       if (!isRetryable(error)) {
         // Log and skip - don't retry
-        deps.recordEmailFailed(emailType, result.error ?? "unknown", durationMs);
-        console.error("Non-retryable email error, skipping", { ...ctx, error: result.error });
+        deps.recordEmailFailed(
+          emailType,
+          result.error ?? "unknown",
+          durationMs,
+        );
+        console.error("Non-retryable email error, skipping", {
+          ...ctx,
+          error: result.error,
+        });
         return;
       }
 
@@ -105,7 +119,10 @@ export async function handleAuthEmailMessage(
     deps.recordEmailFailed(emailType, errorType, durationMs);
 
     if (error instanceof Error && !isRetryable(error)) {
-      console.error("Non-retryable error, skipping message", { ...ctx, error: error.message });
+      console.error("Non-retryable error, skipping message", {
+        ...ctx,
+        error: error.message,
+      });
       return;
     }
 

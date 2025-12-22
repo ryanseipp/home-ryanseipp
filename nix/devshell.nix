@@ -29,9 +29,14 @@
 
         inputsFrom = servicePackages;
 
+        PROTOBUF_LOCATION = "${pkgs.protobuf}";
+        PROTOC = "${pkgs.protobuf}/bin/protoc";
+        PROTOC_INCLUDE = "${pkgs.protobuf}/include";
+
         packages = with pkgs; [
           argocd
           buf
+          protobuf
           cargo-watch
           cilium-cli
           clang

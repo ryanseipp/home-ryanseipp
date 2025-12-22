@@ -40,7 +40,13 @@ in
       commonArgs = {
         inherit src;
         strictDeps = true;
-        nativeBuildInputs = [ pkgs.git ];
+        nativeBuildInputs = [
+          pkgs.git
+          pkgs.protobuf
+        ];
+        PROTOBUF_LOCATION = "${pkgs.protobuf}";
+        PROTOC = "${pkgs.protobuf}/bin/protoc";
+        PROTOC_INCLUDE = "${pkgs.protobuf}/include";
       };
 
       cargoArtifacts = craneLib.buildDepsOnly commonArgs;

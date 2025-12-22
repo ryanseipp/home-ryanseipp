@@ -1,6 +1,6 @@
 syntax = "proto3";
 
-package email.auth.v1;
+package ryanseipp.email.v1;
 
 // Envelope message for all auth-related emails
 message AuthEmailMessage {
