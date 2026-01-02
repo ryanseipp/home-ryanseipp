@@ -17,6 +17,7 @@
           deno.enable = true;
           nixfmt.enable = true;
           rustfmt.enable = true;
+          hclfmt.enable = true;
           terraform.enable = true;
           csharpier.enable = true;
           google-java-format.enable = true;

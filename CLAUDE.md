@@ -60,6 +60,53 @@ cd services/testjava
 buf generate --template buf.gen.yaml proto
 ```
 
+### Infrastructure (infra/)
+
+**Terragrunt/OpenTofu** (network):
+
+```bash
+cd infra/network/<device>               # e.g., spine1, spine2, leaf1
+export MIKROTIK_USERNAME=$(op item get RouterOS-Admin --vault Dev --field username)
+export MIKROTIK_PASSWORD=$(op item get RouterOS-Admin --vault Dev --field password --reveal)
+terragrunt init
+terragrunt plan
+terragrunt apply
+terragrunt validate                     # Validate configuration
+```
+
+Network infrastructure uses Terragrunt + OpenTofu with
+`terraform-routeros/routeros` provider to configure Mikrotik CCR2004 routers in
+a spine-leaf topology with eBGP underlay over IPv6. Fabric topology is defined
+in `locals.hcl`. The `modules/mikrotik` module configures per-device: identity,
+loopbacks, P2P IPs, BFD, BGP peers, VLANs, firewall rules, DHCPv4/v6, and
+certificates.
+
+Each device (spine1, spine2, leaf1) has its own `terragrunt.hcl` referencing the
+shared module and topology. Credentials via environment variables or 1Password.
+
+**Talos** (nodes):
+
+```bash
+cd infra/nodes
+talhelper gensecret > talsecret.sops.yaml  # Generate secrets (encrypt with SOPS)
+talhelper genconfig                         # Generate Talos configs from talconfig.yaml
+talosctl apply-config -n <node> -f <config> # Apply to nodes
+```
+
+**Helmfile** (per-cluster):
+
+```bash
+cd infra/clusters/<cluster>/infra  # or o11y, apps
+helmfile template -f helmfile.yaml --output-dir rendered/  # Render and commit
+```
+
+**SOPS** (secrets):
+
+```bash
+sops -e secrets.yaml > secrets.sops.yaml    # Encrypt
+sops -d secrets.sops.yaml                   # Decrypt
+```
+
 ## Architecture
 
 ### Service Types
@@ -91,3 +138,6 @@ images.
 - `nix/*.nix` - Build modules for each language (rust.nix, dotnet.nix, java.nix,
   deno.nix)
 - `services/<name>/` - Individual service source code
+- `infra/network/` - Mikrotik RouterOS Terraform configs
+- `infra/nodes/` - Talos Linux cluster configs via talhelper
+- `infra/clusters/<name>/` - Per-cluster ArgoCD manifests (infra, o11y, apps)

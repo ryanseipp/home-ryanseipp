@@ -34,6 +34,8 @@
         PROTOC_INCLUDE = "${pkgs.protobuf}/include";
 
         packages = with pkgs; [
+          _1password-cli
+          age
           argocd
           buf
           protobuf
@@ -55,6 +57,10 @@
           kustomize
           opentofu
           quarkus
+          sops
+          talhelper
+          talosctl
+          terragrunt
           yq-go
           zlib.dev
         ];
