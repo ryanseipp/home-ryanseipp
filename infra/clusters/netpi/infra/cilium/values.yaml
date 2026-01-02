@@ -1,0 +1,90 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/cilium/cilium/v1.18.5/install/kubernetes/cilium/values.schema.json
+#
+# Cilium 1.18.5 values for Talos Linux (RPi5 / ARM64)
+# - Kube-proxy replacement enabled
+# - Dual-stack (IPv4 + IPv6)
+# - Minimal configuration (no Hubble)
+
+# IPAM - Use Kubernetes native IPAM
+ipam:
+  mode: kubernetes
+
+# Kube-proxy replacement
+kubeProxyReplacement: true
+
+# Kubernetes API server connection via KubePrism
+# KubePrism provides a local endpoint on every Talos node
+k8sServiceHost: localhost
+k8sServicePort: 7445
+
+# Dual-stack networking
+ipv4:
+  enabled: true
+ipv6:
+  enabled: true
+
+# eBPF masquerading for better performance
+bpf:
+  masquerade: true
+
+# Talos-specific cgroup configuration
+# Talos already mounts cgroup2, so disable auto-mount
+cgroup:
+  autoMount:
+    enabled: false
+  hostRoot: /sys/fs/cgroup
+
+# Security context for Talos Linux
+# SYS_MODULE is removed because Talos doesn't allow loading kernel modules
+securityContext:
+  capabilities:
+    ciliumAgent:
+      - CHOWN
+      - KILL
+      - NET_ADMIN
+      - NET_RAW
+      - IPC_LOCK
+      - SYS_ADMIN
+      - SYS_RESOURCE
+      - DAC_OVERRIDE
+      - FOWNER
+      - SETGID
+      - SETUID
+    cleanCiliumState:
+      - NET_ADMIN
+      - SYS_ADMIN
+      - SYS_RESOURCE
+
+# Disable Hubble (minimal config)
+hubble:
+  enabled: false
+  relay:
+    enabled: false
+  ui:
+    enabled: false
+
+# Operator configuration
+operator:
+  replicas: 1 # Single node cluster
+
+# Routing mode (native for better performance on single-node)
+routingMode: native
+
+# Native routing CIDRs (must match clusterPodNets in talconfig.yaml)
+ipv4NativeRoutingCIDR: 10.244.0.0/16
+ipv6NativeRoutingCIDR: fd00:10:244::/48
+
+# Auto direct node routes for native routing
+autoDirectNodeRoutes: true
+
+# Node port configuration
+nodePort:
+  enabled: true
+
+# External IPs support
+externalIPs:
+  enabled: true
+
+# Host port support
+hostPort:
+  enabled: true

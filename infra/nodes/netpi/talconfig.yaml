@@ -1,0 +1,53 @@
+---
+clusterName: netpi
+talosVersion: v1.11.0
+kubernetesVersion: v1.34.0
+endpoint: https://10.0.20.10:6443
+
+allowSchedulingOnControlPlanes: true
+
+# No CNI - will apply Cilium via Helm after bootstrap
+cniConfig:
+  name: none
+
+clusterPodNets:
+  - 10.244.0.0/16
+  - fd00:10:244::/48
+clusterSvcNets:
+  - 10.96.0.0/12
+  - fd00:10:96::/112
+
+nodes:
+  - hostname: netpi
+    controlPlane: true
+    ipAddress: 10.0.20.10
+    installDisk: /dev/mmcblk0
+    networkInterfaces:
+      - deviceSelector:
+          physical: true
+        dhcp: false
+        addresses:
+          - 10.0.20.10/24
+          - 2601:540:381:150::10/64
+        routes:
+          - network: 0.0.0.0/0
+            gateway: 10.0.20.1
+          - network: ::/0
+            gateway: fe80::1
+    patches:
+      - |-
+        machine:
+          kernel:
+            modules:
+              - name: tun
+          sysctls:
+            net.ipv4.ip_forward: "1"
+            net.ipv6.conf.all.forwarding: "1"
+
+controlPlane:
+  patches:
+    # Disable kube-proxy - Cilium will replace it
+    - |-
+      cluster:
+        proxy:
+          disabled: true

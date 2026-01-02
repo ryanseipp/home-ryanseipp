@@ -89,12 +89,19 @@ locals {
       name    = "NetCluster"
       vlan_id = 20
       ipv4 = {
-        enabled = false
+        network     = "10.0.20.0"
+        cidr_suffix = "24"
+        gateway     = "10.0.20.1"
+        dhcp_pool   = ["10.0.20.100-10.0.20.199"]
+        dns_servers = ["10.0.20.10"]
+        static_leases = {
+          "10.0.20.10" = { name = "netpi", mac = "88:A2:9E:00:0B:AD" }
+        }
       }
       ipv6 = {
-        prefix        = "2601:540:37f:e242::"
+        prefix        = "2601:540:381:150::"
         prefix_length = 64
-        dns_servers   = []
+        dns_servers   = ["2601:540:381:150::10"]
       }
     }
     "LabCluster" = {

@@ -1,0 +1,24 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: kube-system
+
+resources:
+  - helm/cilium/templates/cilium-operator/deployment.yaml
+  - helm/cilium/templates/cilium-operator/role.yaml
+  - helm/cilium/templates/cilium-operator/clusterrole.yaml
+  - helm/cilium/templates/cilium-operator/serviceaccount.yaml
+  - helm/cilium/templates/cilium-operator/clusterrolebinding.yaml
+  - helm/cilium/templates/cilium-operator/rolebinding.yaml
+  - helm/cilium/templates/cilium-secrets-namespace.yaml
+  - helm/cilium/templates/cilium-envoy/daemonset.yaml
+  - helm/cilium/templates/cilium-envoy/service.yaml
+  - helm/cilium/templates/cilium-envoy/serviceaccount.yaml
+  - helm/cilium/templates/cilium-envoy/configmap.yaml
+  - helm/cilium/templates/cilium-agent/role.yaml
+  - helm/cilium/templates/cilium-agent/daemonset.yaml
+  - helm/cilium/templates/cilium-agent/clusterrole.yaml
+  - helm/cilium/templates/cilium-agent/serviceaccount.yaml
+  - helm/cilium/templates/cilium-agent/clusterrolebinding.yaml
+  - helm/cilium/templates/cilium-agent/rolebinding.yaml
+  - helm/cilium/templates/cilium-configmap.yaml
