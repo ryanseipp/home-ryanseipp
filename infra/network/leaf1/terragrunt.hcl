@@ -20,6 +20,24 @@ inputs = {
   timezone                = local.shared_locals.timezone
 
   vlans = local.shared_locals.vlans
+
+  extra_routes = {
+    ipv4 = {
+      nat64_pool = {
+        dst_address = "10.64.64.0/24"
+        gateway     = "10.0.20.10"
+        comment     = "NAT64 pool via netpi"
+      }
+    }
+    ipv6 = {
+      nat64 = {
+        dst_address = "64:ff9b::/96"
+        gateway     = "2601:540:381:150::10"
+        comment     = "NAT64 via netpi"
+      }
+    }
+  }
+
   ethernet_interfaces = {
     "ether1" = {
       comment  = "net-cluster-1"
@@ -41,16 +59,16 @@ inputs = {
       comment  = "titan-r"
       untagged = local.shared_locals.vlans.Trusted.name
     }
-    "ether6" = {
-      comment  = "TV"
-      untagged = local.shared_locals.vlans.Trusted.name
-    }
+    "ether6"  = {}
     "ether7"  = {}
     "ether8"  = {}
     "ether9"  = {}
     "ether10" = {}
     "ether11" = {}
-    "ether12" = {}
+    "ether12" = {
+      comment  = "TV"
+      untagged = local.shared_locals.vlans.Trusted.name
+    }
     "ether13" = {
       comment  = "Management"
       untagged = local.shared_locals.vlans.Management.name

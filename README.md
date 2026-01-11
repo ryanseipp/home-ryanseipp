@@ -217,3 +217,67 @@ Deno services are compiled to standalone executables:
 
    Note: The compiled output filename must match the service directory name. Nix
    expects the binary at `services/my-service/my-service`.
+
+## Infrastructure
+
+### Raspberry Pi 5 (netpi)
+
+The netpi cluster runs Talos Linux on a Raspberry Pi 5 using the
+[talos-rpi5/talos-builder](https://github.com/talos-rpi5/talos-builder) image.
+
+#### PCIe Gen 3.0 Configuration
+
+The Pi 5 defaults to PCIe Gen 2.0 (~450 MB/s). To enable Gen 3.0 (~900 MB/s),
+edit `config.txt` on the SD card's boot partition after flashing:
+
+**On macOS:**
+
+```bash
+# After flashing, the boot partition auto-mounts
+ls /Volumes/
+
+# Edit config.txt
+nano /Volumes/boot/config.txt
+
+# Eject safely
+diskutil eject /Volumes/boot
+```
+
+**On Linux:**
+
+```bash
+# Find the SD card device
+lsblk
+
+# Mount the boot partition
+sudo mkdir -p /mnt/piboot
+sudo mount /dev/sdb1 /mnt/piboot
+
+# Edit config.txt
+sudo nano /mnt/piboot/config.txt
+
+# Unmount
+sudo umount /mnt/piboot
+```
+
+**Add to config.txt:**
+
+```
+[pi5]
+dtparam=pciex1_gen=3
+```
+
+> **Warning:** PCIe Gen 3.0 on Pi 5 is not officially certified. If you
+> experience stability issues, remove the `dtparam=pciex1_gen=3` line to revert
+> to Gen 2.0.
+
+#### Verification
+
+```bash
+# Check ephemeral disk is on NVMe
+talosctl get disks
+talosctl get volumestatus
+
+# Check PCIe speed (should show "8.0 GT/s" for Gen 3)
+talosctl dmesg | grep -i pcie
+```

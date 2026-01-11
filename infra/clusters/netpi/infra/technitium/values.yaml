@@ -1,0 +1,67 @@
+# Technitium DNS Server for netpi cluster
+# - Recursive resolver with DNSSEC validation
+# - Authoritative for seipp.local
+# - Exposed via LoadBalancer (Cilium LB-IPAM)
+
+image:
+  repository: technitium/dns-server
+  tag: "14.3"
+  pullPolicy: IfNotPresent
+
+env:
+  TZ: "America/New_York"
+
+# Use LoadBalancer service - Cilium LB-IPAM assigns IP
+service:
+  main:
+    type: LoadBalancer
+    externalTrafficPolicy: Local
+    annotations:
+      io.cilium/lb-ipam-ips: "10.0.20.53"
+    ports:
+      # Web UI on port 80 -> 5380 internally
+      http:
+        enabled: true
+        port: 80
+        targetPort: 5380
+        protocol: TCP
+      # DNS UDP
+      dns-udp:
+        enabled: true
+        port: 53
+        protocol: UDP
+      # DNS TCP
+      dns-tcp:
+        enabled: true
+        port: 53
+        protocol: TCP
+      # DNS-over-TLS
+      dot:
+        enabled: true
+        port: 853
+        protocol: TCP
+      # DNS-over-HTTPS (reverse proxy port)
+      doh-reverse:
+        enabled: true
+        port: 8053
+        protocol: TCP
+      # Disable DHCP
+      dhcp:
+        enabled: false
+
+# Persistence via hostPath (Talos extraMounts configured)
+persistence:
+  config:
+    enabled: true
+    type: hostPath
+    hostPath: /var/lib/technitium
+    mountPath: /etc/dns
+
+# Resources for Raspberry Pi 5
+resources:
+  requests:
+    cpu: 100m
+    memory: 256Mi
+  limits:
+    cpu: 500m
+    memory: 512Mi

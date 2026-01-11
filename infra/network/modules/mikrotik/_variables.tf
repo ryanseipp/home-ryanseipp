@@ -154,6 +154,29 @@ variable "nodes" {
   description = "Map of all nodes to reference when setting up bgp peers"
 }
 
+# =============================================================================
+# Static Routes
+# =============================================================================
+variable "extra_routes" {
+  type = object({
+    ipv4 = optional(map(object({
+      dst_address = string
+      gateway     = string
+      comment     = optional(string, "")
+    })), {})
+    ipv6 = optional(map(object({
+      dst_address = string
+      gateway     = string
+      comment     = optional(string, "")
+    })), {})
+  })
+  default = {
+    ipv4 = {}
+    ipv6 = {}
+  }
+  description = "Extra static routes to configure on this device"
+}
+
 locals {
   node = var.nodes[var.hostname]
 }

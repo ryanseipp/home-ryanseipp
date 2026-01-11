@@ -1,0 +1,22 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/kubernetes-sigs/gateway-api/main/config/crd/experimental/gateway.networking.k8s.io_gateways.yaml
+#
+# Gateway for Technitium DNS Web UI
+# Uses Cilium's Gateway API implementation
+apiVersion: gateway.networking.k8s.io/v1
+kind: Gateway
+metadata:
+  name: technitium-webui
+  namespace: dns
+  labels:
+    app.kubernetes.io/name: technitium
+    app.kubernetes.io/component: gateway
+spec:
+  gatewayClassName: cilium
+  listeners:
+    - name: http
+      protocol: HTTP
+      port: 80
+      hostname: dns.seipp.local
+      allowedRoutes:
+        namespaces:
+          from: Same

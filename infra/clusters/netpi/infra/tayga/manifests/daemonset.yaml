@@ -1,0 +1,65 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/yannh/kubernetes-json-schema/master/v1.34.0-standalone-strict/daemonset-apps-v1.json
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: tayga
+  namespace: nat64
+  labels:
+    app.kubernetes.io/name: tayga
+    app.kubernetes.io/component: nat64
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: tayga
+  updateStrategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 1
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: tayga
+        app.kubernetes.io/component: nat64
+    spec:
+      hostNetwork: true
+      dnsPolicy: ClusterFirstWithHostNet
+      serviceAccountName: tayga
+      priorityClassName: system-node-critical
+      tolerations:
+        - operator: Exists
+      nodeSelector:
+        kubernetes.io/os: linux
+      containers:
+        - name: tayga
+          image: ghcr.io/apalrd/tayga-nat64:latest
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: TAYGA_POOL4
+              value: "10.64.64.0/24"
+          securityContext:
+            privileged: true
+          resources:
+            requests:
+              cpu: 50m
+              memory: 32Mi
+            limits:
+              cpu: 200m
+              memory: 128Mi
+          livenessProbe:
+            exec:
+              command:
+                - /bin/sh
+                - -c
+                - ip link show nat64
+            initialDelaySeconds: 10
+            periodSeconds: 30
+            failureThreshold: 3
+          readinessProbe:
+            exec:
+              command:
+                - /bin/sh
+                - -c
+                - ip link show nat64 && ip -6 route show 64:ff9b::/96
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            failureThreshold: 3

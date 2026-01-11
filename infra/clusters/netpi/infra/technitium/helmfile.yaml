@@ -1,0 +1,11 @@
+repositories:
+  - name: obeone
+    url: https://obeone.github.io/charts
+
+releases:
+  - name: technitium
+    namespace: dns
+    chart: obeone/technitium-dnsserver
+    version: 1.8.0
+    values:
+      - values.yaml

@@ -1,7 +1,8 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/budimanjojo/talhelper/refs/heads/master/pkg/config/schemas/talconfig.json
 ---
 clusterName: netpi
-talosVersion: v1.11.0
-kubernetesVersion: v1.34.0
+talosVersion: v1.11.5
+kubernetesVersion: v1.34.3
 endpoint: https://10.0.20.10:6443
 
 allowSchedulingOnControlPlanes: true
@@ -43,6 +44,24 @@ nodes:
           sysctls:
             net.ipv4.ip_forward: "1"
             net.ipv6.conf.all.forwarding: "1"
+          kubelet:
+            extraMounts:
+              - destination: /var/lib/technitium
+                type: bind
+                source: /var/lib/technitium
+                options:
+                  - bind
+                  - rshared
+                  - rw
+      - |-
+        apiVersion: v1alpha1
+        kind: VolumeConfig
+        name: EPHEMERAL
+        provisioning:
+          diskSelector:
+            match: disk.transport == 'nvme' && !system_disk
+          minSize: 2GB
+          grow: true
 
 controlPlane:
   patches:
