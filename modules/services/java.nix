@@ -47,7 +47,7 @@ in
             with pkgs;
             [
               graalvmPackages.graalvm-ce
-              gcc
+              clang
               zlib.dev
             ]
             ++ lib.optionals pkgs.stdenv.isDarwin [

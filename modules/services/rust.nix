@@ -41,7 +41,10 @@ in
         inherit src;
         strictDeps = true;
         nativeBuildInputs = [
+          pkgs.cmake
+          pkgs.clang
           pkgs.git
+          pkgs.perl
           pkgs.protobuf
         ];
         PROTOBUF_LOCATION = "${pkgs.protobuf}";

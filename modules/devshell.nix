@@ -45,7 +45,6 @@
           corepack_24
           deno
           dotnetCorePackages.sdk_10_0
-          gcc
           graalvmPackages.graalvm-ce
           helmfile
           jdk25
