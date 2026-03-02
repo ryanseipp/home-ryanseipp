@@ -35,7 +35,10 @@ in
         }
       );
 
-      src = craneLib.cleanCargoSource self;
+      src = lib.cleanSourceWith {
+        src = self;
+        filter = path: type: (craneLib.filterCargoSources path type) || (lib.hasSuffix ".proto" path);
+      };
 
       commonArgs = {
         inherit src;
@@ -73,6 +76,19 @@ in
               }).version;
           }
         );
+
+      buildRustServiceNextest =
+        serviceName:
+        craneLib.cargoNextest (
+          commonArgs
+          // {
+            inherit cargoArtifacts;
+            pname = "${serviceName}-nextest";
+            cargoExtraArgs = "-p ${serviceName}";
+            partitions = 1;
+            partitionType = "count";
+          }
+        );
     in
     {
       rustServices = [
@@ -81,5 +97,6 @@ in
       ];
 
       packages = lib.genAttrs config.rustServices buildRustService;
+      checks = lib.genAttrs config.rustServices buildRustServiceNextest;
     };
 }

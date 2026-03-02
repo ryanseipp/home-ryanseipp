@@ -39,6 +39,7 @@
           argocd
           buf
           protobuf
+          cargo-nextest
           cargo-watch
           cilium-cli
           clang

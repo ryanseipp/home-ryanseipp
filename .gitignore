@@ -1,3 +1,6 @@
+# nix build
+result
+
 # Created by https://www.toptal.com/developers/gitignore/api/go,java,rust,linux,macos,react,direnv,gradle,windows,aspnetcore,terraform,terragrunt,helm
 # Edit at https://www.toptal.com/developers/gitignore?templates=go,java,rust,linux,macos,react,direnv,gradle,windows,aspnetcore,terraform,terragrunt,helm
 
