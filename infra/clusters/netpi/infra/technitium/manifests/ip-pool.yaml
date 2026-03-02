@@ -1,0 +1,9 @@
+# CiliumLoadBalancerIPPool for DNS service
+# Allocates 10.0.20.53 for Technitium DNS
+apiVersion: cilium.io/v2alpha1
+kind: CiliumLoadBalancerIPPool
+metadata:
+  name: dns-pool
+spec:
+  blocks:
+    - cidr: 10.0.20.53/32

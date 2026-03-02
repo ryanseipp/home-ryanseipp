@@ -87,6 +87,8 @@ in
         };
     in
     {
+      denoServices = [ "email" ];
+
       packages = lib.genAttrs config.denoServices buildDenoService;
       # Deno services also serve as checks (doCheck = true runs tests)
       checks = lib.genAttrs config.denoServices buildDenoService;

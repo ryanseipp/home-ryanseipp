@@ -1,6 +1,7 @@
-# Code formatting configuration with treefmt-nix
-{ ... }:
+{ inputs, ... }:
 {
+  imports = [ inputs.treefmt-nix.flakeModule ];
+
   perSystem =
     { pkgs, ... }:
     {

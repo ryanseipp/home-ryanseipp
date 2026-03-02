@@ -79,6 +79,16 @@ spec:
           image: "technitium/dns-server:14.3"
           imagePullPolicy: IfNotPresent
           env:
+            - name: DNS_SERVER_FORWARDERS
+              value: 9.9.9.9,149.112.112.112
+            - name: DNS_SERVER_FORWARDER_PROTOCOL
+              value: Https
+            - name: DNS_SERVER_PREFER_IPV6
+              value: "true"
+            - name: DNS_SERVER_RECURSION
+              value: UseSpecifiedNetworkACL
+            - name: DNS_SERVER_RECURSION_NETWORK_ACL
+              value: 10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,2601:540:380:3cf0::/60
             - name: TZ
               value: America/New_York
           ports:

@@ -4,6 +4,7 @@
   inputs = {
     nixpkgs.url = "github:nixos/nixpkgs?ref=nixos-unstable";
     flake-parts.url = "github:hercules-ci/flake-parts";
+    import-tree.url = "github:vic/import-tree";
     crane.url = "github:ipetkov/crane";
 
     treefmt-nix = {
@@ -33,37 +34,10 @@
   };
 
   outputs =
-    inputs@{ flake-parts, ... }:
+    inputs@{ flake-parts, import-tree, ... }:
     flake-parts.lib.mkFlake { inherit inputs; } {
       imports = [
-        inputs.treefmt-nix.flakeModule
-        ./nix/overlays.nix
-        ./nix/rust.nix
-        ./nix/dotnet.nix
-        ./nix/java.nix
-        ./nix/deno.nix
-        ./nix/treefmt.nix
-        ./nix/devshell.nix
+        (import-tree ./modules)
       ];
-
-      systems = [
-        "x86_64-linux"
-        "aarch64-linux"
-        "x86_64-darwin"
-        "aarch64-darwin"
-      ];
-
-      # Declarative service configuration
-      perSystem =
-        { ... }:
-        {
-          rustServices = [
-            "gateway"
-            "identity"
-          ];
-          dotnetServices = [ "testdotnet" ];
-          javaServices = [ "testjava" ];
-          denoServices = [ "email" ];
-        };
     };
 }

@@ -5,6 +5,7 @@ namespace: dns
 
 resources:
   - manifests/namespace.yaml
+  - manifests/ip-pool.yaml
   - manifests/gateway.yaml
   - manifests/httproute.yaml
   - helm/technitium-dnsserver/templates/common.yaml

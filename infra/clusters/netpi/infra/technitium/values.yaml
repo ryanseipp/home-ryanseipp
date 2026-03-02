@@ -1,17 +1,29 @@
 # Technitium DNS Server for netpi cluster
-# - Recursive resolver with DNSSEC validation
-# - Authoritative for seipp.local
-# - Exposed via LoadBalancer (Cilium LB-IPAM)
+# - Recursive resolver with DNSSEC validation (enable in web UI)
+# - Forwards to Cloudflare DoH for upstream resolution
+# - Exposes DNS, DoT, DoH, DoQ to network via LoadBalancer
 
 image:
   repository: technitium/dns-server
   tag: "14.3"
   pullPolicy: IfNotPresent
 
+# Declarative configuration via environment variables
+# Note: DNSSEC validation must be enabled in web UI (no env var available)
 env:
   TZ: "America/New_York"
+  # Upstream forwarders - Quad9 (malware blocking, DNSSEC validation)
+  # Using IPv4 addresses; Technitium resolves to DoH endpoint
+  DNS_SERVER_FORWARDERS: "9.9.9.9,149.112.112.112"
+  # Use DNS-over-HTTPS to upstream forwarders
+  DNS_SERVER_FORWARDER_PROTOCOL: "Https"
+  # Allow recursion for specified networks (private + delegated /60)
+  DNS_SERVER_RECURSION: "UseSpecifiedNetworkACL"
+  DNS_SERVER_RECURSION_NETWORK_ACL: "10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,2601:540:380:3cf0::/60"
+  # Prefer IPv6 when available
+  DNS_SERVER_PREFER_IPV6: "true"
 
-# Use LoadBalancer service - Cilium LB-IPAM assigns IP
+# LoadBalancer service - Cilium LB-IPAM assigns IP
 service:
   main:
     type: LoadBalancer

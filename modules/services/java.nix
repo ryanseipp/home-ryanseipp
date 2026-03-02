@@ -27,9 +27,7 @@ in
       buildJavaService =
         serviceName:
         let
-          # Use relative path from this file to get a proper path type
-          # ../services/X resolves to the services directory from nix/
-          servicePath = ../services + "/${serviceName}";
+          servicePath = self + "/services/${serviceName}";
           gradle25 = (
             pkgs.gradleFromWrapper {
               wrapperPropertiesPath = "${servicePath}/gradle/wrapper/gradle-wrapper.properties";
@@ -77,6 +75,8 @@ in
           });
     in
     {
+      javaServices = [ "testjava" ];
+
       packages = lib.genAttrs config.javaServices buildJavaService;
     };
 }

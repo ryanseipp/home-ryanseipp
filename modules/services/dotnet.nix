@@ -73,6 +73,8 @@ in
         };
     in
     {
+      dotnetServices = [ "testdotnet" ];
+
       packages = lib.genAttrs config.dotnetServices buildDotnetService;
     };
 }

@@ -14,7 +14,10 @@ resource "routeros_ipv6_dhcp_client" "wan" {
   interface          = each.key
   add_default_route  = true
   pool_prefix_length = 64
-  prefix_hint        = "::/60"
-  request            = ["prefix"]
-  disabled           = false
+  # Request specific prefix to improve stability with Comcast
+  # Update this if ISP assigns a different /60
+  prefix_hint  = "2601:540:380:3cf0::/60"
+  request      = ["prefix"]
+  rapid_commit = true
+  disabled     = false
 }

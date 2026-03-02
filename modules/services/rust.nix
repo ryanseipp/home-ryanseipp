@@ -72,6 +72,11 @@ in
         );
     in
     {
+      rustServices = [
+        "gateway"
+        "identity"
+      ];
+
       packages = lib.genAttrs config.rustServices buildRustService;
     };
 }
