@@ -30,8 +30,27 @@ nix fmt                       # Format all code (uses treefmt with language-spec
 
 ```bash
 cargo build -p <service>      # Build single service
-cargo test -p <service>       # Test single service
 cargo watch -x 'build -p <service>'  # Watch mode
+```
+
+**Rust Testing** (always use llvm-cov + nextest with db-tests):
+
+```bash
+cargo llvm-cov nextest -p identity --features db-tests  # Unit + integration tests with coverage (preferred)
+cargo nextest run -p identity --features db-tests        # Unit + integration tests without coverage
+```
+
+This runs all tests (unit + integration) in a single compilation pass with
+coverage. Requires `docker compose up -d postgres` for integration tests.
+
+**SQLx Offline Cache** (after adding/changing SQL queries):
+
+```bash
+# Requires running postgres: docker compose up -d postgres
+DATABASE_URL="postgres://identity:identity@localhost:5432/identity" sqlx database drop -y
+DATABASE_URL="postgres://identity:identity@localhost:5432/identity" sqlx database create
+DATABASE_URL="postgres://identity:identity@localhost:5432/identity" sqlx migrate run --source services/identity/migrations
+DATABASE_URL="postgres://identity:identity@localhost:5432/identity" cargo sqlx prepare --workspace -- --all-targets --features db-tests
 ```
 
 **Deno** (email):

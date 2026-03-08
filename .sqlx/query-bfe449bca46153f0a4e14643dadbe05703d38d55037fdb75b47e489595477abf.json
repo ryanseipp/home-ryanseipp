@@ -1,0 +1,12 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "UPDATE users SET status = 'active', email_verified = TRUE, updated_at = NOW()\n         WHERE LOWER(email) = LOWER($1) AND deleted_at IS NULL",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": ["Text"]
+    },
+    "nullable": []
+  },
+  "hash": "bfe449bca46153f0a4e14643dadbe05703d38d55037fdb75b47e489595477abf"
+}

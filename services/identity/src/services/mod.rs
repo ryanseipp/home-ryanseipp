@@ -1,7 +1,12 @@
+pub mod auth;
 pub mod get_jwks;
 pub mod login;
 pub mod resend_verification;
 pub mod sign_up;
+pub mod update_password;
+pub mod update_profile;
+pub mod user_info;
+pub mod validation;
 pub mod verify_email;
 
 use std::sync::Arc;
@@ -16,8 +21,10 @@ use crate::crypto::encryption::EncryptedKey;
 use crate::db::DatabasePool;
 use crate::proto::{
     GetJwksRequest, GetJwksResponse, LoginRequest, LoginResponse, ResendVerificationRequest,
-    ResendVerificationResponse, SignUpRequest, SignUpResponse, UserInfoRequest, UserInfoResponse,
-    VerifyEmailRequest, VerifyEmailResponse, identity_service_server::IdentityService,
+    ResendVerificationResponse, SignUpRequest, SignUpResponse, UpdatePasswordRequest,
+    UpdatePasswordResponse, UpdateProfileRequest, UpdateProfileResponse, UserInfoRequest,
+    UserInfoResponse, VerifyEmailRequest, VerifyEmailResponse,
+    identity_service_server::IdentityService,
 };
 
 /// Application state shared across all RPC handlers.
@@ -108,9 +115,35 @@ impl IdentityService for IdentityServiceImpl {
 
     async fn user_info(
         &self,
-        _request: Request<UserInfoRequest>,
+        request: Request<UserInfoRequest>,
     ) -> Result<Response<UserInfoResponse>, Status> {
-        Err(Status::unimplemented("user_info not yet implemented"))
+        let user_id = auth::authenticate(&request, self.db.reader()).await?;
+
+        let user = user_info::execute(self.db.reader(), user_id)
+            .await
+            .map_err(|e| match &e {
+                user_info::UserInfoError::NotFound => Status::not_found("user not found"),
+                other => {
+                    tracing::error!(error = %other, "user_info failed");
+                    Status::internal("internal error")
+                }
+            })?;
+
+        let updated_at = prost_types::Timestamp {
+            seconds: user.updated_at.timestamp(),
+            nanos: user.updated_at.timestamp_subsec_nanos() as i32,
+        };
+
+        Ok(Response::new(UserInfoResponse {
+            sub: user.id.to_string(),
+            name: format!("{} {}", user.given_name, user.family_name),
+            given_name: user.given_name,
+            family_name: user.family_name,
+            username: user.username,
+            email: user.email,
+            email_verified: user.email_verified,
+            updated_at: Some(updated_at),
+        }))
     }
 
     async fn verify_email(
@@ -172,6 +205,71 @@ impl IdentityService for IdentityServiceImpl {
             .map_err(|e| Status::internal(e.to_string()))?;
 
         Ok(Response::new(GetJwksResponse { keys: json }))
+    }
+
+    async fn update_profile(
+        &self,
+        request: Request<UpdateProfileRequest>,
+    ) -> Result<Response<UpdateProfileResponse>, Status> {
+        let user_id = auth::authenticate(&request, self.db.reader()).await?;
+        let req = request.into_inner();
+
+        update_profile::execute(
+            self.db.writer(),
+            user_id,
+            req.given_name.as_deref(),
+            req.family_name.as_deref(),
+            req.username.as_deref(),
+        )
+        .await
+        .map_err(|e| match &e {
+            update_profile::UpdateProfileError::NoFieldsProvided => {
+                Status::invalid_argument("no fields provided")
+            }
+            update_profile::UpdateProfileError::InvalidUsername(_) => {
+                Status::invalid_argument(e.to_string())
+            }
+            update_profile::UpdateProfileError::UsernameTaken => {
+                Status::already_exists("username already taken")
+            }
+            other => {
+                tracing::error!(error = %other, "update_profile failed");
+                Status::internal("internal error")
+            }
+        })?;
+
+        Ok(Response::new(UpdateProfileResponse {}))
+    }
+
+    async fn update_password(
+        &self,
+        request: Request<UpdatePasswordRequest>,
+    ) -> Result<Response<UpdatePasswordResponse>, Status> {
+        let user_id = auth::authenticate(&request, self.db.reader()).await?;
+        let req = request.into_inner();
+
+        update_password::execute(
+            self.db.writer(),
+            user_id,
+            &req.current_password,
+            &req.new_password,
+        )
+        .await
+        .map_err(|e| match &e {
+            update_password::UpdatePasswordError::InvalidCurrentPassword => {
+                Status::unauthenticated("invalid current password")
+            }
+            update_password::UpdatePasswordError::InvalidNewPassword(_) => {
+                Status::invalid_argument(e.to_string())
+            }
+            update_password::UpdatePasswordError::NotFound => Status::not_found("user not found"),
+            other => {
+                tracing::error!(error = %other, "update_password failed");
+                Status::internal("internal error")
+            }
+        })?;
+
+        Ok(Response::new(UpdatePasswordResponse {}))
     }
 }
 
@@ -315,6 +413,30 @@ pub(crate) fn extract_trace_context() -> (Option<String>, Option<String>) {
         )
     } else {
         (None, None)
+    }
+}
+
+/// Look up a user by ID. Only returns non-deleted users.
+pub(crate) async fn get_user_by_id(
+    conn: &mut PgConnection,
+    id: Uuid,
+) -> Result<Option<User>, sqlx::Error> {
+    let row = sqlx::query_as!(
+        UserRow,
+        "SELECT id, username, email, given_name, family_name, password_hash,
+                email_verified, status, created_at, updated_at
+         FROM users
+         WHERE id = $1 AND deleted_at IS NULL",
+        id,
+    )
+    .fetch_optional(conn)
+    .await?;
+
+    match row {
+        Some(r) => Ok(Some(
+            User::try_from(r).map_err(|e| sqlx::Error::Decode(e.into()))?,
+        )),
+        None => Ok(None),
     }
 }
 

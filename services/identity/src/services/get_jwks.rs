@@ -19,11 +19,11 @@ pub async fn execute(pool: &PgPool) -> Result<String, GetJwksError> {
 }
 
 /// Helper for queries that only select `public_jwk`.
-struct JwkRow {
-    public_jwk: serde_json::Value,
+pub(crate) struct JwkRow {
+    pub(crate) public_jwk: serde_json::Value,
 }
 
-async fn list_public_jwks(pool: &PgPool) -> Result<Vec<Jwk>, GetJwksError> {
+pub(crate) async fn list_public_jwks(pool: &PgPool) -> Result<Vec<Jwk>, GetJwksError> {
     let rows = sqlx::query_as!(
         JwkRow,
         "SELECT public_jwk FROM signing_keys WHERE status != 'revoked'",

@@ -64,10 +64,16 @@ pub async fn execute(
     web_base_url: &str,
 ) -> Result<(), SignUpError> {
     // -- Validate input --
-    validate_username(username)?;
-    validate_email(email)?;
+    super::validation::validate_username(username).map_err(|_| SignUpError::InvalidUsername)?;
+    super::validation::validate_email(email).map_err(|_| SignUpError::InvalidEmail)?;
     let password = password.ok_or(SignUpError::PasswordRequired)?;
-    validate_password(password)?;
+    super::validation::validate_password(password).map_err(|e| {
+        if e.contains("at least") {
+            SignUpError::PasswordTooShort
+        } else {
+            SignUpError::PasswordTooLong
+        }
+    })?;
 
     // -- Hash password on blocking thread --
     let password_owned = password.to_string();
@@ -177,87 +183,4 @@ async fn insert_user(
     })?;
 
     Ok(())
-}
-
-fn validate_username(username: &str) -> Result<(), SignUpError> {
-    if username.is_empty() || username.len() > 64 {
-        return Err(SignUpError::InvalidUsername);
-    }
-    if !username
-        .chars()
-        .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-')
-    {
-        return Err(SignUpError::InvalidUsername);
-    }
-    Ok(())
-}
-
-fn validate_password(password: &str) -> Result<(), SignUpError> {
-    if password.len() < 8 {
-        return Err(SignUpError::PasswordTooShort);
-    }
-    if password.len() > 128 {
-        return Err(SignUpError::PasswordTooLong);
-    }
-    Ok(())
-}
-
-fn validate_email(email: &str) -> Result<(), SignUpError> {
-    if email.len() < 3 || email.len() > 254 || !email.contains('@') {
-        return Err(SignUpError::InvalidEmail);
-    }
-    Ok(())
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn valid_usernames() {
-        assert!(validate_username("alice").is_ok());
-        assert!(validate_username("bob-123").is_ok());
-        assert!(validate_username("user_name").is_ok());
-        assert!(validate_username("A").is_ok());
-    }
-
-    #[test]
-    fn invalid_usernames() {
-        assert!(validate_username("").is_err());
-        assert!(validate_username("user name").is_err());
-        assert!(validate_username("user@name").is_err());
-        assert!(validate_username(&"a".repeat(65)).is_err());
-    }
-
-    #[test]
-    fn valid_emails() {
-        assert!(validate_email("a@b").is_ok());
-        assert!(validate_email("user@example.com").is_ok());
-    }
-
-    #[test]
-    fn invalid_emails() {
-        assert!(validate_email("").is_err());
-        assert!(validate_email("ab").is_err());
-        assert!(validate_email("no-at-sign").is_err());
-        assert!(validate_email(&format!("{}@b", "a".repeat(253))).is_err());
-    }
-
-    #[test]
-    fn valid_passwords() {
-        assert!(validate_password("12345678").is_ok());
-        assert!(validate_password(&"a".repeat(128)).is_ok());
-    }
-
-    #[test]
-    fn invalid_passwords() {
-        assert!(matches!(
-            validate_password("short"),
-            Err(SignUpError::PasswordTooShort)
-        ));
-        assert!(matches!(
-            validate_password(&"a".repeat(129)),
-            Err(SignUpError::PasswordTooLong)
-        ));
-    }
 }

@@ -46,6 +46,20 @@ service IdentityService {
     };
   }
 
+  rpc UpdateProfile(UpdateProfileRequest) returns (UpdateProfileResponse) {
+    option (google.api.http) = {
+      patch: "/api/v1/profile"
+      body: "*"
+    };
+  }
+
+  rpc UpdatePassword(UpdatePasswordRequest) returns (UpdatePasswordResponse) {
+    option (google.api.http) = {
+      post: "/api/v1/update-password"
+      body: "*"
+    };
+  }
+
   rpc GetJwks(GetJwksRequest) returns (GetJwksResponse) {
     option (google.api.http) = {
       post: ".well-known/jwks.json"
@@ -114,3 +128,18 @@ message ResendVerificationRequest {
 }
 
 message ResendVerificationResponse {}
+
+message UpdateProfileRequest {
+  optional string given_name = 1;
+  optional string family_name = 2;
+  optional string username = 3;
+}
+
+message UpdateProfileResponse {}
+
+message UpdatePasswordRequest {
+  string current_password = 1;
+  string new_password = 2;
+}
+
+message UpdatePasswordResponse {}
