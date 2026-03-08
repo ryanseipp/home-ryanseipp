@@ -1,9 +1,59 @@
 [package]
 name = "gateway"
-edition = "2024"
 version = "0.1.0"
+edition = "2024"
 
 [lints]
 workspace = true
 
 [dependencies]
+# HTTP framework
+axum.workspace = true
+tower.workspace = true
+tower-http.workspace = true
+
+# gRPC client for calling backend services
+tonic = { workspace = true, features = ["transport", "tls-aws-lc", "channel"] }
+tonic-prost.workspace = true
+prost.workspace = true
+prost-types.workspace = true
+
+# TLS
+aws-lc-rs.workspace = true
+rustls = { workspace = true, features = ["aws_lc_rs"] }
+tokio-rustls.workspace = true
+rustls-pemfile.workspace = true
+
+# Async runtime & utilities
+tokio.workspace = true
+tokio-util.workspace = true
+
+# HTTP primitives (for TLS serve loop)
+hyper.workspace = true
+hyper-util.workspace = true
+
+# Configuration
+config.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+
+# Observability
+tracing.workspace = true
+tracing-subscriber.workspace = true
+tracing-opentelemetry.workspace = true
+opentelemetry.workspace = true
+opentelemetry_sdk.workspace = true
+opentelemetry-otlp.workspace = true
+json-subscriber.workspace = true
+
+# Error handling
+thiserror.workspace = true
+
+[dev-dependencies]
+rcgen.workspace = true
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls-webpki-roots", "json"] }
+temp-env = "0.3"
+tempfile = "3"
+
+[build-dependencies]
+tonic-prost-build.workspace = true
