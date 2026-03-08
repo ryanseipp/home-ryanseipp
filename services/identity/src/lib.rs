@@ -1,6 +1,8 @@
 pub mod config;
 pub mod crypto;
+pub mod db;
+pub mod outbox;
 pub mod proto;
 pub mod server;
-pub mod service;
+pub mod services;
 pub mod telemetry;

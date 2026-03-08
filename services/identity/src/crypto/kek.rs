@@ -72,7 +72,7 @@ pub fn load_kek_from_file(path: &std::path::Path) -> Result<Kek, CryptoError> {
 /// Decode a hex string into bytes.
 fn decode_hex(hex: &str) -> Result<Vec<u8>, CryptoError> {
     let hex = hex.trim();
-    if hex.len() % 2 != 0 {
+    if !hex.len().is_multiple_of(2) {
         return Err(CryptoError::InvalidKek);
     }
 
@@ -144,32 +144,34 @@ mod tests {
     #[test]
     fn load_kek_from_hex_env() {
         let hex = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
-        unsafe {
-            std::env::set_var(KEK_ENV_HEX, hex);
-            std::env::remove_var(KEK_ENV_BASE64);
-            std::env::remove_var(KEK_FILE_ENV);
-        }
-
-        let kek = load_kek().unwrap();
-        assert_eq!(kek.as_bytes().len(), KEK_LEN);
-
-        unsafe { std::env::remove_var(KEK_ENV_HEX) };
+        temp_env::with_vars(
+            [
+                (KEK_ENV_HEX, Some(hex)),
+                (KEK_ENV_BASE64, None),
+                (KEK_FILE_ENV, None),
+            ],
+            || {
+                let kek = load_kek().unwrap();
+                assert_eq!(kek.as_bytes().len(), KEK_LEN);
+            },
+        );
     }
 
     #[test]
     fn load_kek_from_base64_env() {
         let bytes = vec![0x42u8; KEK_LEN];
         let b64 = Base64::encode_string(&bytes);
-        unsafe {
-            std::env::remove_var(KEK_ENV_HEX);
-            std::env::set_var(KEK_ENV_BASE64, &b64);
-            std::env::remove_var(KEK_FILE_ENV);
-        }
-
-        let kek = load_kek().unwrap();
-        assert_eq!(kek.as_bytes(), &bytes);
-
-        unsafe { std::env::remove_var(KEK_ENV_BASE64) };
+        temp_env::with_vars(
+            [
+                (KEK_ENV_HEX, None),
+                (KEK_ENV_BASE64, Some(b64.as_str())),
+                (KEK_FILE_ENV, None),
+            ],
+            || {
+                let kek = load_kek().unwrap();
+                assert_eq!(kek.as_bytes(), &bytes);
+            },
+        );
     }
 
     #[test]
@@ -179,7 +181,7 @@ mod tests {
         let bytes = vec![0xDE; KEK_LEN];
         std::fs::write(&path, &bytes).unwrap();
 
-        let kek = super::load_kek_from_file(&path).unwrap();
+        let kek = load_kek_from_file(&path).unwrap();
         assert_eq!(kek.as_bytes(), &bytes);
 
         std::fs::remove_file(&path).ok();
@@ -187,13 +189,16 @@ mod tests {
 
     #[test]
     fn load_kek_no_config_fails() {
-        unsafe {
-            std::env::remove_var(KEK_ENV_HEX);
-            std::env::remove_var(KEK_ENV_BASE64);
-            std::env::remove_var(KEK_FILE_ENV);
-        }
-
-        let result = load_kek();
-        assert!(matches!(result, Err(CryptoError::KekLoad(_))));
+        temp_env::with_vars(
+            [
+                (KEK_ENV_HEX, None::<&str>),
+                (KEK_ENV_BASE64, None),
+                (KEK_FILE_ENV, None),
+            ],
+            || {
+                let result = load_kek();
+                assert!(matches!(result, Err(CryptoError::KekLoad(_))));
+            },
+        );
     }
 }

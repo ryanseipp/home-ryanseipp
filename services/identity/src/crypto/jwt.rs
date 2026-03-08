@@ -162,7 +162,7 @@ pub fn verify_jwt(
         serde_json::from_slice(&header_bytes).map_err(|_| CryptoError::InvalidToken)?;
 
     // RFC 8725: validate alg against explicit allowlist
-    let algorithm = Algorithm::from_str(&header.alg).ok_or(CryptoError::AlgorithmMismatch)?;
+    let algorithm: Algorithm = header.alg.parse()?;
     if !options.allowed_algorithms.contains(&algorithm) {
         return Err(CryptoError::AlgorithmMismatch);
     }
@@ -202,17 +202,17 @@ pub fn verify_jwt(
         serde_json::from_slice(&claims_bytes).map_err(|_| CryptoError::InvalidToken)?;
 
     // Validate exp (RFC 7519 Section 4.1.4)
-    if let Some(exp) = claims.exp {
-        if options.current_time > exp + options.leeway {
-            return Err(CryptoError::TokenExpired);
-        }
+    if let Some(exp) = claims.exp
+        && options.current_time > exp + options.leeway
+    {
+        return Err(CryptoError::TokenExpired);
     }
 
     // Validate nbf (RFC 7519 Section 4.1.5)
-    if let Some(nbf) = claims.nbf {
-        if options.current_time + options.leeway < nbf {
-            return Err(CryptoError::InvalidToken);
-        }
+    if let Some(nbf) = claims.nbf
+        && options.current_time + options.leeway < nbf
+    {
+        return Err(CryptoError::InvalidToken);
     }
 
     // Validate iss (RFC 7519 Section 4.1.1)

@@ -1,0 +1,33 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT kid, algorithm, encrypted_private_key, public_jwk\n         FROM signing_keys\n         WHERE status = 'active'\n         ORDER BY created_at DESC\n         LIMIT 1",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "kid",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 1,
+        "name": "algorithm",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 2,
+        "name": "encrypted_private_key",
+        "type_info": "Bytea"
+      },
+      {
+        "ordinal": 3,
+        "name": "public_jwk",
+        "type_info": "Jsonb"
+      }
+    ],
+    "parameters": {
+      "Left": []
+    },
+    "nullable": [false, false, false, false]
+  },
+  "hash": "6f7958ae856a0fc5742670578def7fb411a43e859c370a9ff5476367fa16ad00"
+}

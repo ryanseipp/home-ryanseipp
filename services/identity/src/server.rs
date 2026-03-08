@@ -1,32 +1,57 @@
+use std::sync::Arc;
+
 use tokio::net::TcpListener;
 use tokio_stream::wrappers::TcpListenerStream;
+use tokio_util::sync::CancellationToken;
 use tonic::transport::server::Server;
 
 use crate::config::AppConfig;
+use crate::crypto::Kek;
+use crate::db::DatabasePool;
+use crate::outbox;
 use crate::proto::identity_service_server::IdentityServiceServer;
-use crate::service::IdentityServiceImpl;
+use crate::services::IdentityServiceImpl;
 
 /// Build and run the gRPC server.
 ///
-/// Accepts a `TcpListener` for testability — tests bind port 0 and pass the
-/// listener in, while production binds the configured address in `main`.
+/// Accepts a `TcpListener` and `DatabasePool` for testability —
+/// tests bind port 0 and pass their own dependencies, while production
+/// builds them from config in `main`.
 pub async fn run(
     listener: TcpListener,
     config: &AppConfig,
+    db: DatabasePool,
+    kek: Arc<Kek>,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let addr = listener.local_addr()?;
     tracing::info!(%addr, "starting identity gRPC server");
 
-    let service = IdentityServiceImpl::new();
+    let cancel = CancellationToken::new();
+
+    // Spawn outbox publisher as a background task
+    let publisher_pool = db.writer().clone();
+    let publisher_cancel = cancel.clone();
+    let publisher_config = config.kafka.clone();
+    let publisher_handle = tokio::spawn(async move {
+        if let Err(e) =
+            outbox::publisher::run(publisher_pool, &publisher_config, publisher_cancel).await
+        {
+            tracing::error!(error = %e, "outbox publisher failed");
+        }
+    });
+
+    let service = IdentityServiceImpl::new(db, config.web_base_url.clone(), kek);
     let svc = IdentityServiceServer::new(service);
     let incoming = TcpListenerStream::new(listener);
 
-    let shutdown = async {
+    let shutdown_cancel = cancel.clone();
+    let shutdown = async move {
         tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())
             .expect("failed to install SIGTERM handler")
             .recv()
             .await;
         tracing::info!("received SIGTERM, shutting down");
+        shutdown_cancel.cancel();
     };
 
     if config.tls_available() {
@@ -49,6 +74,14 @@ pub async fn run(
             .add_service(svc)
             .serve_with_incoming_shutdown(incoming, shutdown)
             .await?;
+    }
+
+    // Signal the publisher to stop (in case shutdown wasn't triggered by SIGTERM)
+    cancel.cancel();
+
+    // Wait for the publisher to finish
+    if let Err(e) = publisher_handle.await {
+        tracing::error!(error = %e, "outbox publisher task panicked");
     }
 
     Ok(())

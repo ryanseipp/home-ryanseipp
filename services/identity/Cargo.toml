@@ -4,11 +4,14 @@ version = "0.1.0"
 edition = "2024"
 
 [features]
-default = []
+default = ["argon2"]
+argon2 = ["dep:argon2"]
 fips = ["aws-lc-rs/fips", "rustls/fips"]
+db-tests = []
 
 [dependencies]
-async-trait.workspace = true
+argon2 = { version = "0.5", optional = true, default-features = false, features = ["std", "password-hash"] }
+chrono = { version = "0.4", default-features = false, features = ["serde"] }
 aws-lc-rs.workspace = true
 base64ct.workspace = true
 config.workspace = true
@@ -16,14 +19,18 @@ json-subscriber.workspace = true
 opentelemetry.workspace = true
 opentelemetry_sdk.workspace = true
 opentelemetry-otlp.workspace = true
+password-hash = { version = "0.5", features = ["rand_core"] }
 prost.workspace = true
 prost-types.workspace = true
+rskafka.workspace = true
 rustls = { workspace = true, optional = true }
 serde.workspace = true
 serde_json.workspace = true
+sqlx.workspace = true
 thiserror.workspace = true
 tokio.workspace = true
 tokio-stream.workspace = true
+tokio-util.workspace = true
 tonic = { workspace = true, features = ["transport", "tls-aws-lc"] }
 tonic-prost.workspace = true
 tracing.workspace = true
@@ -35,9 +42,15 @@ zeroize.workspace = true
 [dev-dependencies]
 jsonwebtoken = { version = "10.3", default-features = false, features = ["rust_crypto"] }
 proptest = "1"
+temp-env = "0.3"
 rcgen.workspace = true
+rustls = { workspace = true, features = ["aws_lc_rs"] }
 tempfile = "3"
+testcontainers-modules = { version = "0.15", features = ["postgres"] }
 tonic = { workspace = true, features = ["transport", "tls-aws-lc", "channel"] }
+
+[lints]
+workspace = true
 
 [build-dependencies]
 tonic-prost-build.workspace = true

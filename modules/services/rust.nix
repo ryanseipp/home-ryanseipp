@@ -19,6 +19,10 @@ in
         default = [ ];
         description = "List of Rust service names to build from services/ directory";
       };
+      options.rustCraneLib = lib.mkOption {
+        type = lib.types.unspecified;
+        description = "Crane library instance configured with the Rust toolchain";
+      };
     }
   );
 
@@ -28,6 +32,7 @@ in
       craneLib = (inputs.crane.mkLib pkgs).overrideToolchain (
         p:
         p.rust-bin.stable.latest.default.override {
+          extensions = [ "llvm-tools-preview" ];
           targets = [
             "x86_64-unknown-linux-musl"
             "aarch64-unknown-linux-musl"
@@ -37,7 +42,12 @@ in
 
       src = lib.cleanSourceWith {
         src = self;
-        filter = path: type: (craneLib.filterCargoSources path type) || (lib.hasSuffix ".proto" path);
+        filter =
+          path: type:
+          (craneLib.filterCargoSources path type)
+          || (lib.hasSuffix ".proto" path)
+          || (lib.hasInfix "/migrations/" path)
+          || (lib.hasInfix "/.sqlx/" path);
       };
 
       commonArgs = {
@@ -53,6 +63,7 @@ in
         PROTOBUF_LOCATION = "${pkgs.protobuf}";
         PROTOC = "${pkgs.protobuf}/bin/protoc";
         PROTOC_INCLUDE = "${pkgs.protobuf}/include";
+        SQLX_OFFLINE = "true";
       };
 
       cargoArtifacts = craneLib.buildDepsOnly commonArgs;
@@ -77,18 +88,42 @@ in
           }
         );
 
-      buildRustServiceNextest =
-        serviceName:
-        craneLib.cargoNextest (
-          commonArgs
-          // {
-            inherit cargoArtifacts;
-            pname = "${serviceName}-nextest";
-            cargoExtraArgs = "-p ${serviceName}";
-            partitions = 1;
-            partitionType = "count";
-          }
-        );
+      workspaceClippy = craneLib.cargoClippy (
+        commonArgs
+        // {
+          inherit cargoArtifacts;
+          cargoClippyExtraArgs = "--all-targets -- --deny warnings";
+        }
+      );
+
+      workspaceDoc = craneLib.cargoDoc (
+        commonArgs
+        // {
+          inherit cargoArtifacts;
+          env.RUSTDOCFLAGS = "--deny warnings";
+        }
+      );
+
+      workspaceNextest = craneLib.cargoNextest (
+        commonArgs
+        // {
+          inherit cargoArtifacts;
+          partitions = 1;
+          partitionType = "count";
+          cargoNextestPartitionsExtraArgs = "--no-tests=pass";
+        }
+      );
+
+      workspaceCoverage = craneLib.cargoNextest (
+        commonArgs
+        // {
+          inherit cargoArtifacts;
+          withLlvmCov = true;
+          partitions = 1;
+          partitionType = "count";
+          cargoNextestPartitionsExtraArgs = "--no-tests=pass";
+        }
+      );
     in
     {
       rustServices = [
@@ -96,7 +131,15 @@ in
         "identity"
       ];
 
-      packages = lib.genAttrs config.rustServices buildRustService;
-      checks = lib.genAttrs config.rustServices buildRustServiceNextest;
+      rustCraneLib = craneLib;
+
+      packages = lib.genAttrs config.rustServices buildRustService // {
+        coverage = workspaceCoverage;
+      };
+      checks = {
+        clippy = workspaceClippy;
+        doc = workspaceDoc;
+        nextest = workspaceNextest;
+      };
     };
 }

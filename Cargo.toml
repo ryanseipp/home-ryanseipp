@@ -8,6 +8,12 @@ version = "0.1.0"
 [workspace.metadata.crane]
 name = "home-ryanseipp"
 
+[workspace.lints.rust]
+warnings = "deny"
+
+[workspace.lints.clippy]
+all = { level = "deny", priority = -1 }
+
 [workspace.dependencies]
 async-trait = "0.1"
 aws-lc-rs = "1"
@@ -21,11 +27,14 @@ tokio = { version = "1", features = ["full"] }
 tonic = "0.14"
 tonic-prost = "0.14"
 tonic-prost-build = "0.14"
-uuid = { version = "1", features = ["v4"] }
+uuid = { version = "1", features = ["v4", "v7"] }
 zeroize = { version = "1", features = ["derive"] }
 
 # Configuration
 config = { version = "0.15", default-features = false }
+
+# Database
+sqlx = { version = "0.8", default-features = false, features = ["runtime-tokio", "tls-rustls-aws-lc-rs", "postgres", "migrate", "macros", "uuid", "json", "chrono"] }
 
 # Logging
 json-subscriber = { version = "0.2", default-features = false, features = ["tracing-opentelemetry-0-32"] }
@@ -34,8 +43,12 @@ json-subscriber = { version = "0.2", default-features = false, features = ["trac
 rcgen = { version = "0.14", default-features = false, features = ["aws_lc_rs", "pem"] }
 rustls = { version = "0.23", default-features = false }
 
+# Kafka
+rskafka = { version = "0.6", default-features = false }
+
 # Server
 tokio-stream = { version = "0.1", features = ["net"] }
+tokio-util = { version = "0.7", features = ["rt"] }
 
 # Observability
 tracing = "0.1"

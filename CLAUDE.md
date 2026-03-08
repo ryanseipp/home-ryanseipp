@@ -107,6 +107,12 @@ sops -e secrets.yaml > secrets.sops.yaml    # Encrypt
 sops -d secrets.sops.yaml                   # Decrypt
 ```
 
+## Code Quality
+
+- **No broken windows.** If a test is flaky, fix it. If you encounter a
+  pre-existing issue while working nearby, fix it. Do not skip, ignore, or work
+  around known problems.
+
 ## Architecture
 
 ### Service Types

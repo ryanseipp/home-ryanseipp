@@ -4,7 +4,7 @@ use thiserror::Error;
 ///
 /// Error messages are intentionally generic to avoid leaking information
 /// about internal cryptographic state (per OWASP Key Management guidance).
-#[derive(Debug, Error)]
+#[derive(Debug, PartialEq, Eq, Error)]
 pub enum CryptoError {
     #[error("key generation failed")]
     KeyGeneration,
@@ -42,9 +42,9 @@ pub enum CryptoError {
     #[error("algorithm mismatch")]
     AlgorithmMismatch,
 
-    #[error("store operation failed")]
-    Store(#[source] Box<dyn std::error::Error + Send + Sync>),
-
     #[error("kek loading failed: {0}")]
     KekLoad(String),
+
+    #[error("random number generation failed")]
+    RngFailure,
 }

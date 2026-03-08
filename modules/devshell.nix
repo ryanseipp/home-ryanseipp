@@ -8,23 +8,13 @@
   perSystem =
     { config, pkgs, ... }:
     let
-      craneLib = (inputs.crane.mkLib pkgs).overrideToolchain (
-        p:
-        p.rust-bin.stable.latest.default.override {
-          targets = [
-            "x86_64-unknown-linux-musl"
-            "aarch64-unknown-linux-musl"
-          ];
-        }
-      );
-
       # Collect all service packages for inputsFrom
       allServiceNames =
         config.rustServices ++ config.dotnetServices ++ config.javaServices ++ config.denoServices;
       servicePackages = map (name: config.packages.${name}) allServiceNames;
     in
     {
-      devShells.default = craneLib.devShell {
+      devShells.default = config.rustCraneLib.devShell {
         checks = inputs.self.checks;
 
         inputsFrom = servicePackages;
@@ -39,8 +29,10 @@
           argocd
           buf
           protobuf
+          cargo-llvm-cov
           cargo-nextest
           cargo-watch
+          sqlx-cli
           cilium-cli
           clang
           corepack_24

@@ -1,0 +1,12 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "INSERT INTO signing_keys (kid, algorithm, encrypted_private_key, public_jwk, status)\n         VALUES ($1, $2, $3, $4, 'active')",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": ["Text", "Text", "Bytea", "Jsonb"]
+    },
+    "nullable": []
+  },
+  "hash": "b5e39e37c16a881991a73639ab8103b6f270272cafb018cab10ddfb0e9e38786"
+}

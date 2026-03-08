@@ -1,0 +1,12 @@
+syntax = "proto3";
+
+package ryanseipp.events.v1;
+
+// Published by the identity service when a user registers and needs email verification.
+message EmailVerificationRequested {
+  string idempotency_key = 1;
+  string recipient_email = 2;
+  string recipient_name = 3;
+  string verification_token = 4;
+  int32 expires_in_minutes = 5;
+}

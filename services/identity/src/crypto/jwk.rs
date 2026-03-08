@@ -58,13 +58,16 @@ impl Algorithm {
             Algorithm::ES384 => &signature::ECDSA_P384_SHA384_FIXED,
         }
     }
+}
 
-    /// Parse from JWA algorithm identifier string.
-    pub fn from_str(s: &str) -> Option<Self> {
+impl std::str::FromStr for Algorithm {
+    type Err = CryptoError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s {
-            "ES256" => Some(Algorithm::ES256),
-            "ES384" => Some(Algorithm::ES384),
-            _ => None,
+            "ES256" => Ok(Algorithm::ES256),
+            "ES384" => Ok(Algorithm::ES384),
+            _ => Err(CryptoError::AlgorithmMismatch),
         }
     }
 }
@@ -280,9 +283,9 @@ mod tests {
 
     #[test]
     fn algorithm_from_str() {
-        assert_eq!(Algorithm::from_str("ES256"), Some(Algorithm::ES256));
-        assert_eq!(Algorithm::from_str("ES384"), Some(Algorithm::ES384));
-        assert_eq!(Algorithm::from_str("RS256"), None);
-        assert_eq!(Algorithm::from_str("none"), None);
+        assert_eq!("ES256".parse(), Ok(Algorithm::ES256));
+        assert_eq!("ES384".parse(), Ok(Algorithm::ES384));
+        assert!("RS256".parse::<Algorithm>().is_err());
+        assert!("none".parse::<Algorithm>().is_err());
     }
 }
