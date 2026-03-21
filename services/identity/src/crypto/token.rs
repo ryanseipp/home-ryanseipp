@@ -1,3 +1,5 @@
+use aws_lc_rs::digest::{self, SHA256};
+use aws_lc_rs::rand;
 use base64ct::{Base64UrlUnpadded, Encoding};
 
 use super::CryptoError;
@@ -9,10 +11,10 @@ use super::CryptoError;
 /// - `sha256_hash_bytes` is the SHA-256 hash of the raw bytes (stored in DB)
 pub fn generate_verification_token() -> Result<(String, Vec<u8>), CryptoError> {
     let mut raw_token = [0u8; 32];
-    aws_lc_rs::rand::fill(&mut raw_token).map_err(|_| CryptoError::RngFailure)?;
+    rand::fill(&mut raw_token).map_err(|_| CryptoError::RngFailure)?;
 
     let token_string = Base64UrlUnpadded::encode_string(&raw_token);
-    let token_hash = aws_lc_rs::digest::digest(&aws_lc_rs::digest::SHA256, &raw_token);
+    let token_hash = digest::digest(&SHA256, &raw_token);
     let token_hash_bytes = token_hash.as_ref().to_vec();
 
     Ok((token_string, token_hash_bytes))
@@ -33,7 +35,7 @@ mod tests {
         assert_eq!(decoded.len(), 32);
 
         // Hash should be the SHA-256 of the decoded bytes
-        let expected_hash = aws_lc_rs::digest::digest(&aws_lc_rs::digest::SHA256, &decoded);
+        let expected_hash = digest::digest(&SHA256, &decoded);
         assert_eq!(hash, expected_hash.as_ref());
     }
 

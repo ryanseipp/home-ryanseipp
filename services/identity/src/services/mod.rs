@@ -11,7 +11,9 @@ pub mod verify_email;
 
 use std::sync::Arc;
 
-use sqlx::{PgConnection, PgPool};
+use aws_lc_rs::signature::EcdsaKeyPair;
+use deadpool_postgres::GenericClient;
+use deadpool_postgres::Pool;
 use tonic::{Request, Response, Status};
 use uuid::Uuid;
 
@@ -342,56 +344,37 @@ impl std::fmt::Debug for User {
     }
 }
 
-pub(crate) struct UserRow {
-    id: Uuid,
-    username: String,
-    email: String,
-    given_name: String,
-    family_name: String,
-    password_hash: String,
-    email_verified: bool,
-    status: String,
-    created_at: chrono::DateTime<chrono::Utc>,
-    updated_at: chrono::DateTime<chrono::Utc>,
-}
-
-impl TryFrom<UserRow> for User {
-    type Error = String;
-
-    fn try_from(row: UserRow) -> Result<Self, Self::Error> {
-        Ok(User {
-            id: row.id,
-            username: row.username,
-            email: row.email,
-            given_name: row.given_name,
-            family_name: row.family_name,
-            password_hash: row.password_hash,
-            email_verified: row.email_verified,
-            status: row.status.parse()?,
-            created_at: row.created_at,
-            updated_at: row.updated_at,
-        })
-    }
+fn user_from_row(row: &tokio_postgres::Row) -> Result<User, String> {
+    let status: String = row.get("status");
+    Ok(User {
+        id: row.get("id"),
+        username: row.get("username"),
+        email: row.get("email"),
+        given_name: row.get("given_name"),
+        family_name: row.get("family_name"),
+        password_hash: row.get("password_hash"),
+        email_verified: row.get("email_verified"),
+        status: status.parse()?,
+        created_at: row.get("created_at"),
+        updated_at: row.get("updated_at"),
+    })
 }
 
 /// Insert a verification token within an existing transaction.
 pub(crate) async fn insert_token(
-    conn: &mut sqlx::PgConnection,
+    client: &impl GenericClient,
     id: Uuid,
     user_id: Uuid,
     token_hash: &[u8],
     expires_at: chrono::DateTime<chrono::Utc>,
-) -> Result<(), sqlx::Error> {
-    sqlx::query!(
-        "INSERT INTO email_verification_tokens (id, user_id, token_hash, expires_at)
-         VALUES ($1, $2, $3, $4)",
-        id,
-        user_id,
-        token_hash,
-        expires_at,
-    )
-    .execute(conn)
-    .await?;
+) -> Result<(), tokio_postgres::Error> {
+    client
+        .execute(
+            "INSERT INTO email_verification_tokens (id, user_id, token_hash, expires_at)
+             VALUES ($1, $2, $3, $4)",
+            &[&id, &user_id, &token_hash, &expires_at],
+        )
+        .await?;
 
     Ok(())
 }
@@ -418,23 +401,22 @@ pub(crate) fn extract_trace_context() -> (Option<String>, Option<String>) {
 
 /// Look up a user by ID. Only returns non-deleted users.
 pub(crate) async fn get_user_by_id(
-    conn: &mut PgConnection,
+    client: &impl GenericClient,
     id: Uuid,
-) -> Result<Option<User>, sqlx::Error> {
-    let row = sqlx::query_as!(
-        UserRow,
-        "SELECT id, username, email, given_name, family_name, password_hash,
-                email_verified, status, created_at, updated_at
-         FROM users
-         WHERE id = $1 AND deleted_at IS NULL",
-        id,
-    )
-    .fetch_optional(conn)
-    .await?;
+) -> Result<Option<User>, tokio_postgres::Error> {
+    let row = client
+        .query_opt(
+            "SELECT id, username, email, given_name, family_name, password_hash,
+                    email_verified, status, created_at, updated_at
+             FROM users
+             WHERE id = $1 AND deleted_at IS NULL",
+            &[&id],
+        )
+        .await?;
 
     match row {
         Some(r) => Ok(Some(
-            User::try_from(r).map_err(|e| sqlx::Error::Decode(e.into()))?,
+            user_from_row(&r).expect("valid user status in database"),
         )),
         None => Ok(None),
     }
@@ -442,23 +424,22 @@ pub(crate) async fn get_user_by_id(
 
 /// Look up a user by email (case-insensitive). Only returns non-deleted users.
 pub(crate) async fn get_user_by_email(
-    conn: &mut PgConnection,
+    client: &impl GenericClient,
     email: &str,
-) -> Result<Option<User>, sqlx::Error> {
-    let row = sqlx::query_as!(
-        UserRow,
-        "SELECT id, username, email, given_name, family_name, password_hash,
-                email_verified, status, created_at, updated_at
-         FROM users
-         WHERE LOWER(email) = LOWER($1) AND deleted_at IS NULL",
-        email,
-    )
-    .fetch_optional(conn)
-    .await?;
+) -> Result<Option<User>, tokio_postgres::Error> {
+    let row = client
+        .query_opt(
+            "SELECT id, username, email, given_name, family_name, password_hash,
+                    email_verified, status, created_at, updated_at
+             FROM users
+             WHERE LOWER(email) = LOWER($1) AND deleted_at IS NULL",
+            &[&email],
+        )
+        .await?;
 
     match row {
         Some(r) => Ok(Some(
-            User::try_from(r).map_err(|e| sqlx::Error::Decode(e.into()))?,
+            user_from_row(&r).expect("valid user status in database"),
         )),
         None => Ok(None),
     }
@@ -468,43 +449,44 @@ pub(crate) async fn get_user_by_email(
 pub(crate) struct ActiveSigningKey {
     pub kid: String,
     pub algorithm: crypto::Algorithm,
-    pub key_pair: aws_lc_rs::signature::EcdsaKeyPair,
-}
-
-struct SigningKeyRow {
-    kid: String,
-    algorithm: String,
-    encrypted_private_key: Vec<u8>,
-    #[allow(dead_code)]
-    public_jwk: serde_json::Value,
+    pub key_pair: EcdsaKeyPair,
 }
 
 /// Fetch the most recent active signing key, decrypt it, and return it ready for signing.
 pub(crate) async fn get_active_signing_key(
-    pool: &PgPool,
+    pool: &Pool,
     kek: &Kek,
 ) -> Result<ActiveSigningKey, crypto::CryptoError> {
-    let row = sqlx::query_as!(
-        SigningKeyRow,
-        "SELECT kid, algorithm, encrypted_private_key, public_jwk
-         FROM signing_keys
-         WHERE status = 'active'
-         ORDER BY created_at DESC
-         LIMIT 1",
-    )
-    .fetch_optional(pool)
-    .await
-    .map_err(|_| crypto::CryptoError::KeyNotFound)?
-    .ok_or(crypto::CryptoError::KeyNotFound)?;
+    let client = pool
+        .get()
+        .await
+        .map_err(|_| crypto::CryptoError::KeyNotFound)?;
 
-    let algorithm: crypto::Algorithm = row.algorithm.parse()?;
-    let encrypted = EncryptedKey::from_bytes(row.encrypted_private_key)?;
+    let row = client
+        .query_opt(
+            "SELECT kid, algorithm, encrypted_private_key, public_jwk
+             FROM signing_keys
+             WHERE status = 'active'
+             ORDER BY created_at DESC
+             LIMIT 1",
+            &[],
+        )
+        .await
+        .map_err(|_| crypto::CryptoError::KeyNotFound)?
+        .ok_or(crypto::CryptoError::KeyNotFound)?;
+
+    let kid: String = row.get("kid");
+    let algorithm_str: String = row.get("algorithm");
+    let encrypted_private_key: Vec<u8> = row.get("encrypted_private_key");
+
+    let algorithm: crypto::Algorithm = algorithm_str.parse()?;
+    let encrypted = EncryptedKey::from_bytes(encrypted_private_key)?;
     let pkcs8_der =
-        crypto::encryption::decrypt_private_key(kek.as_bytes(), &encrypted, row.kid.as_bytes())?;
+        crypto::encryption::decrypt_private_key(kek.as_bytes(), &encrypted, kid.as_bytes())?;
     let key_pair = crypto::jwt::key_pair_from_pkcs8(algorithm, &pkcs8_der)?;
 
     Ok(ActiveSigningKey {
-        kid: row.kid,
+        kid,
         algorithm,
         key_pair,
     })
@@ -514,15 +496,18 @@ pub(crate) async fn get_active_signing_key(
 ///
 /// Generates an ES256 key pair, encrypts the private key with the KEK,
 /// and stores it. No-op if an active key already exists.
-pub async fn ensure_signing_key(
-    pool: &PgPool,
-    kek: &Kek,
-) -> Result<(), Box<dyn std::error::Error>> {
-    let count = sqlx::query_scalar!("SELECT COUNT(*) FROM signing_keys WHERE status = 'active'")
-        .fetch_one(pool)
+pub async fn ensure_signing_key(pool: &Pool, kek: &Kek) -> Result<(), Box<dyn std::error::Error>> {
+    let client = pool.get().await?;
+
+    let row = client
+        .query_one(
+            "SELECT COUNT(*) FROM signing_keys WHERE status = 'active'",
+            &[],
+        )
         .await?;
 
-    if count.unwrap_or(0) > 0 {
+    let count: i64 = row.get(0);
+    if count > 0 {
         tracing::info!("active signing key already exists");
         return Ok(());
     }
@@ -535,16 +520,18 @@ pub async fn ensure_signing_key(
     )?;
     let public_jwk_json = serde_json::to_value(&generated.public_jwk)?;
 
-    sqlx::query!(
-        "INSERT INTO signing_keys (kid, algorithm, encrypted_private_key, public_jwk, status)
-         VALUES ($1, $2, $3, $4, 'active')",
-        generated.kid,
-        generated.algorithm.as_str(),
-        encrypted.as_bytes(),
-        public_jwk_json,
-    )
-    .execute(pool)
-    .await?;
+    client
+        .execute(
+            "INSERT INTO signing_keys (kid, algorithm, encrypted_private_key, public_jwk, status)
+             VALUES ($1, $2, $3, $4, 'active')",
+            &[
+                &generated.kid,
+                &generated.algorithm.as_str(),
+                &encrypted.as_bytes(),
+                &public_jwk_json,
+            ],
+        )
+        .await?;
 
     tracing::info!(kid = %generated.kid, "auto-created signing key");
     Ok(())

@@ -2,12 +2,13 @@ use std::collections::{BTreeMap, HashMap};
 use std::sync::Arc;
 use std::time::Duration;
 
+use deadpool_postgres::Pool;
 use opentelemetry::trace::{SpanContext, SpanId, TraceFlags, TraceId, TraceState};
 use rskafka::client::ClientBuilder;
 use rskafka::client::partition::{PartitionClient, UnknownTopicHandling};
 use rskafka::record::Record;
-use sqlx::Postgres;
-use sqlx::pool::PoolConnection;
+use tokio::task::JoinHandle;
+use tokio::time;
 use tokio_util::sync::CancellationToken;
 use tracing_opentelemetry::OpenTelemetrySpanExt;
 
@@ -51,15 +52,56 @@ fn build_span_context(event: &OutboxRow) -> Option<SpanContext> {
     ))
 }
 
+/// Handle returned by [`spawn`] to coordinate graceful shutdown.
+pub struct PublisherHandle {
+    cancel: CancellationToken,
+    handle: JoinHandle<()>,
+}
+
+impl PublisherHandle {
+    /// Signal the publisher to stop and wait for it to finish.
+    pub async fn shutdown(self) {
+        self.cancel.cancel();
+        if let Err(e) = self.handle.await {
+            tracing::error!(error = %e, "outbox publisher task panicked");
+        }
+    }
+}
+
+/// Spawn the outbox publisher as a background task.
+///
+/// Returns a [`PublisherHandle`] that the caller uses to trigger graceful
+/// shutdown. The publisher runs until the handle is shut down.
+pub fn spawn(
+    pool: Pool,
+    config: &KafkaConfig,
+    tls_config: Option<Arc<rustls::ClientConfig>>,
+) -> PublisherHandle {
+    let cancel = CancellationToken::new();
+    let publisher_cancel = cancel.clone();
+    let config = config.clone();
+
+    let handle = tokio::spawn(async move {
+        if let Err(e) = run(pool, &config, publisher_cancel, tls_config).await {
+            tracing::error!(error = %e, "outbox publisher failed");
+        }
+    });
+
+    PublisherHandle { cancel, handle }
+}
+
 /// Run the outbox publisher loop.
 ///
 /// Acquires a PostgreSQL advisory lock for leader election, then polls the
 /// outbox table for unpublished events and produces them to Kafka. Only one
 /// replica will actively publish at a time.
-pub async fn run(
-    pool: sqlx::PgPool,
+///
+/// When `tls_config` is provided (from SPIFFE), Kafka connections use mTLS.
+async fn run(
+    pool: Pool,
     config: &KafkaConfig,
     cancel: CancellationToken,
+    tls_config: Option<Arc<rustls::ClientConfig>>,
 ) -> Result<(), OutboxError> {
     let poll_interval = Duration::from_millis(config.poll_interval_ms);
     let batch_size = config.batch_size;
@@ -71,7 +113,11 @@ pub async fn run(
         .collect();
 
     // Connect to Kafka
-    let kafka_client = ClientBuilder::new(brokers)
+    let mut builder = ClientBuilder::new(brokers);
+    if let Some(tls) = tls_config {
+        builder = builder.tls_config(tls);
+    }
+    let kafka_client = builder
         .build()
         .await
         .map_err(|e| OutboxError::Kafka(e.to_string()))?;
@@ -80,10 +126,9 @@ pub async fn run(
     // Cache partition clients per topic
     let mut partition_clients: HashMap<&'static str, Arc<PartitionClient>> = HashMap::new();
 
-    // Acquire a dedicated (non-pooled) connection for the advisory lock.
+    // Acquire a dedicated connection for the advisory lock.
     // Session-level advisory locks auto-release when this connection drops.
-    let mut leader_conn: PoolConnection<Postgres> =
-        pool.acquire().await.map_err(OutboxError::Db)?;
+    let leader_obj = pool.get().await?;
 
     let mut is_leader = false;
 
@@ -95,9 +140,9 @@ pub async fn run(
                 tracing::info!("outbox publisher shutting down");
                 break;
             }
-            () = tokio::time::sleep(poll_interval) => {
+            () = time::sleep(poll_interval) => {
                 // Attempt leadership
-                match db::try_acquire_leader_lock(&mut leader_conn).await {
+                match db::try_acquire_leader_lock(&leader_obj).await {
                     Ok(true) => {
                         if !is_leader {
                             tracing::info!("outbox publisher acquired leader lock");
@@ -114,11 +159,6 @@ pub async fn run(
                     Err(e) => {
                         tracing::error!(error = %e, "outbox publisher leader lock error");
                         is_leader = false;
-                        // Reconnect on next iteration
-                        match pool.acquire().await {
-                            Ok(conn) => leader_conn = conn,
-                            Err(e) => tracing::error!(error = %e, "failed to reacquire connection"),
-                        }
                         continue;
                     }
                 }

@@ -2,41 +2,63 @@ use std::io::BufReader;
 use std::sync::Arc;
 
 use axum::Router;
+use axum::body::Body;
 use hyper::Request;
 use hyper::body::Incoming;
+use hyper::service::service_fn;
+use hyper_util::rt::{TokioExecutor, TokioIo};
+use hyper_util::server::conn::auto::Builder;
 use rustls::ServerConfig;
 use rustls_pemfile::{certs, private_key};
+use tokio::fs;
 use tokio::net::TcpListener;
+use tokio::signal::unix::{SignalKind, signal};
 use tokio_rustls::TlsAcceptor;
-use tokio_util::sync::CancellationToken;
 use tower::ServiceExt;
 
 use crate::config::AppConfig;
 use crate::routes;
+use crate::routes::AppState;
+
+/// Errors from the HTTP server.
+#[derive(Debug, thiserror::Error)]
+pub enum ServerError {
+    #[error("IO error: {0}")]
+    Io(#[from] std::io::Error),
+
+    #[error("TLS error: {0}")]
+    Tls(#[from] rustls::Error),
+
+    #[error("failed to read TLS cert/key: {0}")]
+    CertLoad(String),
+
+    #[error("no private key found in PEM file")]
+    MissingKey,
+}
 
 /// Build and run the HTTP server.
 ///
 /// Accepts a `TcpListener` for testability — tests bind port 0 and pass
 /// their own dependencies, while production builds them from config in `main`.
+///
+/// External HTTPS uses file-based certs (publicly-trusted, e.g. Let's Encrypt).
+/// Internal mTLS to backends uses SPIFFE — that's handled in `identity_client`.
 pub async fn run(
     listener: TcpListener,
     config: &AppConfig,
-) -> Result<(), Box<dyn std::error::Error>> {
+    state: Option<AppState>,
+) -> Result<(), ServerError> {
     let addr = listener.local_addr()?;
     tracing::info!(%addr, "starting gateway HTTP server");
 
-    let cancel = CancellationToken::new();
+    let app = routes::router(state);
 
-    let app = routes::router(config).await?;
-
-    let shutdown_cancel = cancel.clone();
-    let shutdown = async move {
-        tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())
+    let shutdown = async {
+        signal(SignalKind::terminate())
             .expect("failed to install SIGTERM handler")
             .recv()
             .await;
         tracing::info!("received SIGTERM, shutting down");
-        shutdown_cancel.cancel();
     };
 
     if config.tls_available() {
@@ -48,7 +70,6 @@ pub async fn run(
             .await?;
     }
 
-    cancel.cancel();
     Ok(())
 }
 
@@ -61,7 +82,7 @@ async fn serve_tls(
     app: Router,
     config: &AppConfig,
     shutdown: impl std::future::Future<Output = ()>,
-) -> Result<(), Box<dyn std::error::Error>> {
+) -> Result<(), ServerError> {
     let tls_config = load_rustls_config(&config.tls_cert_file, &config.tls_key_file).await?;
 
     tracing::info!(
@@ -90,20 +111,20 @@ async fn serve_tls(
                         }
                     };
 
-                    let service = hyper::service::service_fn(
+                    let service = service_fn(
                         move |req: Request<Incoming>| {
                             let app = app.clone();
-                            async move { app.oneshot(req.map(axum::body::Body::new)).await }
+                            async move { app.oneshot(req.map(Body::new)).await }
                         },
                     );
 
-                    let builder = hyper_util::server::conn::auto::Builder::new(
-                        hyper_util::rt::TokioExecutor::new(),
+                    let builder = Builder::new(
+                        TokioExecutor::new(),
                     );
 
                     if let Err(e) = builder
                         .serve_connection(
-                            hyper_util::rt::TokioIo::new(tls_stream),
+                            TokioIo::new(tls_stream),
                             service,
                         )
                         .await
@@ -125,20 +146,20 @@ async fn serve_tls(
 /// Load TLS configuration from PEM files on disk.
 ///
 /// Uses aws-lc-rs as the crypto provider via rustls.
-async fn load_rustls_config(
-    cert_path: &str,
-    key_path: &str,
-) -> Result<ServerConfig, Box<dyn std::error::Error>> {
-    let cert_data = tokio::fs::read(cert_path)
+async fn load_rustls_config(cert_path: &str, key_path: &str) -> Result<ServerConfig, ServerError> {
+    let cert_data = fs::read(cert_path)
         .await
-        .map_err(|e| format!("failed to read TLS cert at {cert_path}: {e}"))?;
-    let key_data = tokio::fs::read(key_path)
+        .map_err(|e| ServerError::CertLoad(format!("failed to read cert at {cert_path}: {e}")))?;
+    let key_data = fs::read(key_path)
         .await
-        .map_err(|e| format!("failed to read TLS key at {key_path}: {e}"))?;
+        .map_err(|e| ServerError::CertLoad(format!("failed to read key at {key_path}: {e}")))?;
 
-    let cert_chain: Vec<_> = certs(&mut BufReader::new(&*cert_data)).collect::<Result<_, _>>()?;
-    let key =
-        private_key(&mut BufReader::new(&*key_data))?.ok_or("no private key found in PEM file")?;
+    let cert_chain: Vec<_> = certs(&mut BufReader::new(&*cert_data))
+        .collect::<Result<_, _>>()
+        .map_err(|e| ServerError::CertLoad(format!("failed to parse cert PEM: {e}")))?;
+    let key = private_key(&mut BufReader::new(&*key_data))
+        .map_err(|e| ServerError::CertLoad(format!("failed to parse key PEM: {e}")))?
+        .ok_or(ServerError::MissingKey)?;
 
     let mut tls_config = ServerConfig::builder()
         .with_no_client_auth()

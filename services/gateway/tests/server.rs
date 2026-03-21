@@ -1,7 +1,9 @@
 use std::net::SocketAddr;
 
 use gateway::config::{AppConfig, IdentityConfig};
+use gateway::server::run;
 use tokio::net::TcpListener;
+use tokio::task;
 
 fn test_config(addr: SocketAddr) -> AppConfig {
     AppConfig {
@@ -18,10 +20,10 @@ async fn start_test_server() -> SocketAddr {
     let config = test_config(addr);
 
     tokio::spawn(async move {
-        gateway::server::run(listener, &config).await.unwrap();
+        run(listener, &config, None).await.unwrap();
     });
 
-    tokio::task::yield_now().await;
+    task::yield_now().await;
     addr
 }
 
@@ -47,7 +49,8 @@ async fn server_accepts_tls_connections() {
     // Ensure aws-lc-rs is installed as the rustls crypto provider for the
     // test client. The server side handles this via its own rustls config,
     // but reqwest needs it explicitly when rustls has no default provider.
-    let _ = rustls::crypto::aws_lc_rs::default_provider().install_default();
+    use rustls::crypto::aws_lc_rs::default_provider;
+    let _ = default_provider().install_default();
 
     let subject_alt_names = vec!["::1".into(), "localhost".into()];
     let certified_key = generate_simple_self_signed(subject_alt_names).unwrap();
@@ -79,9 +82,9 @@ async fn server_accepts_tls_connections() {
     };
 
     tokio::spawn(async move {
-        gateway::server::run(listener, &config).await.unwrap();
+        run(listener, &config, None).await.unwrap();
     });
-    tokio::task::yield_now().await;
+    task::yield_now().await;
 
     let cert = reqwest::Certificate::from_pem(cert_pem.as_bytes()).unwrap();
     let client = reqwest::ClientBuilder::new()

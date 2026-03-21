@@ -23,15 +23,20 @@ password-hash = { version = "0.5", features = ["rand_core"] }
 prost.workspace = true
 prost-types.workspace = true
 rskafka.workspace = true
-rustls = { workspace = true, optional = true }
+rustls = { workspace = true, features = ["aws_lc_rs"] }
 serde.workspace = true
+spiffe.workspace = true
+spiffe-rustls.workspace = true
 serde_json.workspace = true
-sqlx.workspace = true
+tokio-postgres.workspace = true
+deadpool-postgres.workspace = true
+tokio-postgres-rustls.workspace = true
+refinery.workspace = true
 thiserror.workspace = true
 tokio.workspace = true
-tokio-stream.workspace = true
+tonic-tls.workspace = true
 tokio-util.workspace = true
-tonic = { workspace = true, features = ["transport", "tls-aws-lc"] }
+tonic = { workspace = true, features = ["transport"] }
 tonic-prost.workspace = true
 tracing.workspace = true
 tracing-opentelemetry.workspace = true
@@ -44,10 +49,9 @@ jsonwebtoken = { version = "10.3", default-features = false, features = ["rust_c
 proptest = "1"
 temp-env = "0.3"
 rcgen.workspace = true
-rustls = { workspace = true, features = ["aws_lc_rs"] }
 tempfile = "3"
 testcontainers-modules = { version = "0.15", features = ["postgres"] }
-tonic = { workspace = true, features = ["transport", "tls-aws-lc", "channel"] }
+tonic = { workspace = true, features = ["transport", "channel"] }
 
 [lints]
 workspace = true

@@ -1,5 +1,6 @@
+use deadpool_postgres::{GenericClient, Pool};
 use prost::Message;
-use sqlx::{PgConnection, PgPool};
+use tokio::task;
 use uuid::Uuid;
 
 use crate::crypto;
@@ -14,7 +15,10 @@ const TOKEN_EXPIRES_MINUTES: i32 = 60;
 #[derive(Debug, thiserror::Error)]
 pub enum SignUpError {
     #[error("database error")]
-    Db(#[from] sqlx::Error),
+    Db(#[from] tokio_postgres::Error),
+
+    #[error("pool error")]
+    Pool(#[from] deadpool_postgres::PoolError),
 
     #[error("password error")]
     Password(#[from] PasswordError),
@@ -55,7 +59,7 @@ pub enum SignUpError {
 /// 4. Single transaction: insert user + verification token + outbox event
 #[tracing::instrument(skip(pool, password, web_base_url), fields(username = %username, email = %email))]
 pub async fn execute(
-    pool: &PgPool,
+    pool: &Pool,
     username: &str,
     email: &str,
     given_name: &str,
@@ -77,7 +81,7 @@ pub async fn execute(
 
     // -- Hash password on blocking thread --
     let password_owned = password.to_string();
-    let password_hash = tokio::task::spawn_blocking(move || crypto::hash_password(&password_owned))
+    let password_hash = task::spawn_blocking(move || crypto::hash_password(&password_owned))
         .await
         .map_err(|_| PasswordError::HashingFailed)??;
 
@@ -114,10 +118,11 @@ pub async fn execute(
     let payload = event.encode_to_vec();
 
     // -- Single transaction: user + token + outbox --
-    let mut tx = pool.begin().await.map_err(SignUpError::Db)?;
+    let mut client = pool.get().await?;
+    let tx = client.transaction().await?;
 
     insert_user(
-        &mut tx,
+        &tx,
         user_id,
         username,
         email,
@@ -127,12 +132,12 @@ pub async fn execute(
     )
     .await?;
 
-    super::insert_token(&mut tx, token_id, user_id, &token_hash_bytes, expires_at)
+    super::insert_token(&tx, token_id, user_id, &token_hash_bytes, expires_at)
         .await
         .map_err(SignUpError::Db)?;
 
     outbox::db::insert_event(
-        &mut tx,
+        &tx,
         outbox_id,
         "user",
         user_id,
@@ -152,7 +157,7 @@ pub async fn execute(
 
 /// Insert a new user within an existing transaction.
 async fn insert_user(
-    conn: &mut PgConnection,
+    client: &impl GenericClient,
     id: Uuid,
     username: &str,
     email: &str,
@@ -160,27 +165,31 @@ async fn insert_user(
     family_name: &str,
     password_hash: &str,
 ) -> Result<(), SignUpError> {
-    sqlx::query!(
-        "INSERT INTO users (id, username, email, given_name, family_name, password_hash)
-         VALUES ($1, $2, $3, $4, $5, $6)",
-        id,
-        username,
-        email,
-        given_name,
-        family_name,
-        password_hash,
-    )
-    .execute(conn)
-    .await
-    .map_err(|e| match &e {
-        sqlx::Error::Database(db_err) if db_err.constraint() == Some("idx_users_username") => {
-            SignUpError::UsernameTaken
-        }
-        sqlx::Error::Database(db_err) if db_err.constraint() == Some("idx_users_email") => {
-            SignUpError::EmailTaken
-        }
-        _ => SignUpError::Db(e),
-    })?;
+    client
+        .execute(
+            "INSERT INTO users (id, username, email, given_name, family_name, password_hash)
+             VALUES ($1, $2, $3, $4, $5, $6)",
+            &[
+                &id,
+                &username,
+                &email,
+                &given_name,
+                &family_name,
+                &password_hash,
+            ],
+        )
+        .await
+        .map_err(|e| {
+            if let Some(db_err) = e.as_db_error() {
+                if db_err.constraint() == Some("idx_users_username") {
+                    return SignUpError::UsernameTaken;
+                }
+                if db_err.constraint() == Some("idx_users_email") {
+                    return SignUpError::EmailTaken;
+                }
+            }
+            SignUpError::Db(e)
+        })?;
 
     Ok(())
 }

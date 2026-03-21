@@ -1,5 +1,6 @@
 use chrono::{Duration, Utc};
-use sqlx::PgPool;
+use deadpool_postgres::Pool;
+use tokio::task;
 use uuid::Uuid;
 
 use crate::crypto;
@@ -24,7 +25,10 @@ const ISSUER: &str = "https://home.ryanseipp.com";
 #[derive(Debug, thiserror::Error)]
 pub enum LoginError {
     #[error("database error")]
-    Db(#[from] sqlx::Error),
+    Db(#[from] tokio_postgres::Error),
+
+    #[error("pool error")]
+    Pool(#[from] deadpool_postgres::PoolError),
 
     #[error("invalid credentials")]
     InvalidCredentials,
@@ -61,22 +65,22 @@ pub struct LoginResult {
 /// 7. Return all three tokens
 #[tracing::instrument(skip(pool, password, kek))]
 pub async fn execute(
-    pool: &PgPool,
+    pool: &Pool,
     email: &str,
     password: &str,
     kek: &Kek,
 ) -> Result<LoginResult, LoginError> {
     // 1. Look up user by email
-    let mut conn = pool.acquire().await?;
-    let user = get_user_by_email(&mut conn, email)
+    let client = pool.get().await?;
+    let user = get_user_by_email(&client, email)
         .await?
         .ok_or(LoginError::InvalidCredentials)?;
-    drop(conn);
+    drop(client);
 
     // 2. Verify password on blocking thread
     let password_hash = user.password_hash.clone();
     let password_owned = password.to_string();
-    tokio::task::spawn_blocking(move || crypto::verify_password(&password_owned, &password_hash))
+    task::spawn_blocking(move || crypto::verify_password(&password_owned, &password_hash))
         .await
         .map_err(|_| PasswordError::VerificationFailed)?
         .map_err(|_| LoginError::InvalidCredentials)?;
@@ -172,22 +176,20 @@ pub async fn execute(
 
 /// Insert a refresh token hash into the database.
 async fn insert_refresh_token(
-    pool: &PgPool,
+    pool: &Pool,
     id: Uuid,
     user_id: Uuid,
     token_hash: &[u8],
     expires_at: chrono::DateTime<Utc>,
-) -> Result<(), sqlx::Error> {
-    sqlx::query!(
-        "INSERT INTO refresh_tokens (id, user_id, token_hash, expires_at)
-         VALUES ($1, $2, $3, $4)",
-        id,
-        user_id,
-        token_hash,
-        expires_at,
-    )
-    .execute(pool)
-    .await?;
+) -> Result<(), LoginError> {
+    let client = pool.get().await?;
+    client
+        .execute(
+            "INSERT INTO refresh_tokens (id, user_id, token_hash, expires_at)
+             VALUES ($1, $2, $3, $4)",
+            &[&id, &user_id, &token_hash, &expires_at],
+        )
+        .await?;
 
     Ok(())
 }

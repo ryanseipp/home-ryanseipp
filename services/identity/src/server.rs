@@ -1,108 +1,73 @@
 use std::sync::Arc;
 
 use tokio::net::TcpListener;
-use tokio_stream::wrappers::TcpListenerStream;
-use tokio_util::sync::CancellationToken;
-use tonic::transport::server::Server;
+use tokio::signal::unix::{self, SignalKind};
+use tonic::transport::Error as TransportError;
+use tonic::transport::server::{Server, TcpIncoming};
+use tonic_tls::rustls::TlsIncoming;
 
-use crate::config::AppConfig;
 use crate::crypto::Kek;
 use crate::db::DatabasePool;
-use crate::outbox;
 use crate::proto::identity_service_server::IdentityServiceServer;
 use crate::services::IdentityServiceImpl;
+
+/// Errors from the gRPC server.
+#[derive(Debug, thiserror::Error)]
+pub enum ServerError {
+    #[error("IO error: {0}")]
+    Io(#[from] std::io::Error),
+
+    #[error("gRPC transport error: {0}")]
+    Transport(#[from] TransportError),
+}
 
 /// Build and run the gRPC server.
 ///
 /// Accepts a `TcpListener` and `DatabasePool` for testability —
 /// tests bind port 0 and pass their own dependencies, while production
 /// builds them from config in `main`.
+///
+/// When `server_tls` is `Some`, the server performs TLS via `tonic-tls`
+/// on each incoming TCP connection.
 pub async fn run(
     listener: TcpListener,
-    config: &AppConfig,
+    web_base_url: &str,
     db: DatabasePool,
     kek: Arc<Kek>,
-) -> Result<(), Box<dyn std::error::Error>> {
+    server_tls: Option<Arc<rustls::ServerConfig>>,
+) -> Result<(), ServerError> {
     let addr = listener.local_addr()?;
     tracing::info!(%addr, "starting identity gRPC server");
 
-    let cancel = CancellationToken::new();
-
-    // Spawn outbox publisher as a background task
-    let publisher_pool = db.writer().clone();
-    let publisher_cancel = cancel.clone();
-    let publisher_config = config.kafka.clone();
-    let publisher_handle = tokio::spawn(async move {
-        if let Err(e) =
-            outbox::publisher::run(publisher_pool, &publisher_config, publisher_cancel).await
-        {
-            tracing::error!(error = %e, "outbox publisher failed");
-        }
-    });
-
-    let service = IdentityServiceImpl::new(db, config.web_base_url.clone(), kek);
+    let service = IdentityServiceImpl::new(db, web_base_url.to_owned(), kek);
     let svc = IdentityServiceServer::new(service);
-    let incoming = TcpListenerStream::new(listener);
 
-    let shutdown_cancel = cancel.clone();
-    let shutdown = async move {
-        tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())
+    let shutdown = async {
+        unix::signal(SignalKind::terminate())
             .expect("failed to install SIGTERM handler")
             .recv()
             .await;
         tracing::info!("received SIGTERM, shutting down");
-        shutdown_cancel.cancel();
     };
 
-    if config.tls_available() {
-        let tls_config = load_tls_config(&config.tls_cert_file, &config.tls_key_file).await?;
-        tracing::info!(
-            cert = %config.tls_cert_file,
-            key = %config.tls_key_file,
-            "TLS enabled"
-        );
+    let incoming = TcpIncoming::from(listener);
+
+    if let Some(tls_config) = server_tls {
+        tracing::info!("TLS enabled (SPIFFE)");
+        let tls_incoming = TlsIncoming::new(incoming, tls_config);
 
         Server::builder()
-            .tls_config(tls_config)?
             .add_service(svc)
-            .serve_with_incoming_shutdown(incoming, shutdown)
+            .serve_with_incoming_shutdown(tls_incoming, shutdown)
             .await?;
     } else {
-        tracing::warn!("TLS disabled — cert/key files not found");
+        tracing::warn!("TLS disabled — no SPIFFE source available");
 
         Server::builder()
             .add_service(svc)
             .serve_with_incoming_shutdown(incoming, shutdown)
             .await?;
-    }
-
-    // Signal the publisher to stop (in case shutdown wasn't triggered by SIGTERM)
-    cancel.cancel();
-
-    // Wait for the publisher to finish
-    if let Err(e) = publisher_handle.await {
-        tracing::error!(error = %e, "outbox publisher task panicked");
     }
 
     Ok(())
-}
-
-/// Load TLS configuration from PEM files on disk.
-///
-/// Uses aws-lc-rs as the crypto provider via tonic's `tls-aws-lc` feature.
-async fn load_tls_config(
-    cert_path: &str,
-    key_path: &str,
-) -> Result<tonic::transport::ServerTlsConfig, Box<dyn std::error::Error>> {
-    let cert_pem = tokio::fs::read_to_string(cert_path)
-        .await
-        .map_err(|e| format!("failed to read TLS cert at {cert_path}: {e}"))?;
-    let key_pem = tokio::fs::read_to_string(key_path)
-        .await
-        .map_err(|e| format!("failed to read TLS key at {key_path}: {e}"))?;
-
-    let identity = tonic::transport::Identity::from_pem(cert_pem, key_pem);
-    let tls_config = tonic::transport::ServerTlsConfig::new().identity(identity);
-
-    Ok(tls_config)
 }

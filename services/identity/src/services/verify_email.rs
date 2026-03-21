@@ -1,5 +1,6 @@
+use aws_lc_rs::digest::{self, SHA256};
 use base64ct::{Base64UrlUnpadded, Encoding};
-use sqlx::{PgConnection, PgPool};
+use deadpool_postgres::{GenericClient, Pool};
 use uuid::Uuid;
 
 use super::UserStatus;
@@ -7,7 +8,10 @@ use super::UserStatus;
 #[derive(Debug, thiserror::Error)]
 pub enum VerifyEmailError {
     #[error("database error")]
-    Db(#[from] sqlx::Error),
+    Db(#[from] tokio_postgres::Error),
+
+    #[error("pool error")]
+    Pool(#[from] deadpool_postgres::PoolError),
 
     #[error("invalid or expired verification token")]
     InvalidToken,
@@ -29,17 +33,18 @@ pub enum VerifyEmailError {
 /// 3. Check expiry
 /// 4. Transaction: consume token + mark user email verified + set status active
 #[tracing::instrument(skip(pool, raw_token))]
-pub async fn execute(pool: &PgPool, raw_token: &str) -> Result<(), VerifyEmailError> {
+pub async fn execute(pool: &Pool, raw_token: &str) -> Result<(), VerifyEmailError> {
     // Decode base64url token and hash it
     let token_bytes =
         Base64UrlUnpadded::decode_vec(raw_token).map_err(|_| VerifyEmailError::InvalidToken)?;
-    let token_hash = aws_lc_rs::digest::digest(&aws_lc_rs::digest::SHA256, &token_bytes);
+    let token_hash = digest::digest(&SHA256, &token_bytes);
     let token_hash_bytes = token_hash.as_ref();
 
-    let mut tx = pool.begin().await?;
+    let mut client = pool.get().await?;
+    let tx = client.transaction().await?;
 
     // Look up the token
-    let token_row = get_token_by_hash(&mut tx, token_hash_bytes)
+    let token_row = get_token_by_hash(&tx, token_hash_bytes)
         .await?
         .ok_or(VerifyEmailError::InvalidToken)?;
 
@@ -49,8 +54,8 @@ pub async fn execute(pool: &PgPool, raw_token: &str) -> Result<(), VerifyEmailEr
     }
 
     // Consume token + mark user verified in one transaction
-    consume_token(&mut tx, token_row.id).await?;
-    mark_email_verified(&mut tx, token_row.user_id).await?;
+    consume_token(&tx, token_row.id).await?;
+    mark_email_verified(&tx, token_row.user_id).await?;
 
     tx.commit().await?;
 
@@ -61,42 +66,44 @@ pub async fn execute(pool: &PgPool, raw_token: &str) -> Result<(), VerifyEmailEr
 struct TokenRow {
     id: Uuid,
     user_id: Uuid,
-    #[allow(dead_code)]
-    token_hash: Vec<u8>,
     expires_at: chrono::DateTime<chrono::Utc>,
-    #[allow(dead_code)]
-    consumed_at: Option<chrono::DateTime<chrono::Utc>>,
 }
 
 /// Look up an unconsumed token by its SHA-256 hash.
 async fn get_token_by_hash(
-    conn: &mut PgConnection,
+    client: &impl GenericClient,
     token_hash: &[u8],
 ) -> Result<Option<TokenRow>, VerifyEmailError> {
-    let row = sqlx::query_as!(
-        TokenRow,
-        "SELECT id, user_id, token_hash, expires_at, consumed_at
-         FROM email_verification_tokens
-         WHERE token_hash = $1 AND consumed_at IS NULL",
-        token_hash,
-    )
-    .fetch_optional(conn)
-    .await?;
+    let row = client
+        .query_opt(
+            "SELECT id, user_id, expires_at
+             FROM email_verification_tokens
+             WHERE token_hash = $1 AND consumed_at IS NULL",
+            &[&token_hash],
+        )
+        .await?;
 
-    Ok(row)
+    Ok(row.map(|r| TokenRow {
+        id: r.get("id"),
+        user_id: r.get("user_id"),
+        expires_at: r.get("expires_at"),
+    }))
 }
 
 /// Mark a token as consumed within an existing transaction.
-async fn consume_token(conn: &mut PgConnection, token_id: Uuid) -> Result<(), VerifyEmailError> {
-    let result = sqlx::query!(
-        "UPDATE email_verification_tokens SET consumed_at = NOW()
-         WHERE id = $1 AND consumed_at IS NULL",
-        token_id,
-    )
-    .execute(conn)
-    .await?;
+async fn consume_token(
+    client: &impl GenericClient,
+    token_id: Uuid,
+) -> Result<(), VerifyEmailError> {
+    let rows_affected = client
+        .execute(
+            "UPDATE email_verification_tokens SET consumed_at = NOW()
+             WHERE id = $1 AND consumed_at IS NULL",
+            &[&token_id],
+        )
+        .await?;
 
-    if result.rows_affected() == 0 {
+    if rows_affected == 0 {
         return Err(VerifyEmailError::AlreadyConsumed);
     }
     Ok(())
@@ -104,19 +111,18 @@ async fn consume_token(conn: &mut PgConnection, token_id: Uuid) -> Result<(), Ve
 
 /// Mark a user's email as verified and set status to active.
 async fn mark_email_verified(
-    conn: &mut PgConnection,
+    client: &impl GenericClient,
     user_id: Uuid,
 ) -> Result<(), VerifyEmailError> {
-    let result = sqlx::query!(
-        "UPDATE users SET email_verified = TRUE, status = $1, updated_at = NOW()
-         WHERE id = $2 AND deleted_at IS NULL",
-        UserStatus::Active.as_str(),
-        user_id,
-    )
-    .execute(conn)
-    .await?;
+    let rows_affected = client
+        .execute(
+            "UPDATE users SET email_verified = TRUE, status = $1, updated_at = NOW()
+             WHERE id = $2 AND deleted_at IS NULL",
+            &[&UserStatus::Active.as_str(), &user_id],
+        )
+        .await?;
 
-    if result.rows_affected() == 0 {
+    if rows_affected == 0 {
         return Err(VerifyEmailError::UserNotFound);
     }
     Ok(())

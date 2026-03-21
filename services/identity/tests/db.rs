@@ -1,38 +1,42 @@
 #![cfg(feature = "db-tests")]
 
+use deadpool_postgres::Pool;
+use identity::db::DatabasePool;
 use identity::outbox;
+use identity::services::sign_up;
 use prost::Message;
-use sqlx::PgPool;
 use testcontainers_modules::postgres::Postgres;
+use testcontainers_modules::testcontainers::ContainerAsync;
+use testcontainers_modules::testcontainers::ImageExt;
 use testcontainers_modules::testcontainers::runners::AsyncRunner;
 use uuid::Uuid;
 
 struct TestDb {
-    _container: testcontainers_modules::testcontainers::ContainerAsync<Postgres>,
-    pool: PgPool,
+    _container: ContainerAsync<Postgres>,
+    pool: Pool,
 }
 
 impl TestDb {
     async fn new() -> Self {
-        let container = Postgres::default().start().await.unwrap();
+        let container = Postgres::default()
+            .with_tag("17-alpine")
+            .start()
+            .await
+            .unwrap();
         let host = container.get_host().await.unwrap();
         let port = container.get_host_port_ipv4(5432).await.unwrap();
 
-        let pool = PgPool::connect(&format!(
-            "postgres://postgres:postgres@{host}:{port}/postgres"
-        ))
-        .await
-        .unwrap();
-
-        sqlx::migrate!("./migrations").run(&pool).await.unwrap();
+        let url = format!("postgres://postgres:postgres@{host}:{port}/postgres");
+        let db = DatabasePool::from_url(&url, 5).unwrap();
+        db.migrate().await.unwrap();
 
         Self {
             _container: container,
-            pool,
+            pool: db.writer().clone(),
         }
     }
 
-    fn pool(&self) -> &PgPool {
+    fn pool(&self) -> &Pool {
         &self.pool
     }
 }
@@ -47,9 +51,9 @@ async fn outbox_fetch_unpublished_returns_inserted_event() {
     let id = Uuid::now_v7();
     let aggregate_id = Uuid::now_v7();
 
-    let mut conn = pool.acquire().await.unwrap();
+    let client = pool.get().await.unwrap();
     outbox::db::insert_event(
-        &mut *conn,
+        &client,
         id,
         "user",
         aggregate_id,
@@ -83,9 +87,9 @@ async fn outbox_mark_published_excludes_from_fetch() {
     let id = Uuid::now_v7();
     let aggregate_id = Uuid::now_v7();
 
-    let mut conn = pool.acquire().await.unwrap();
+    let client = pool.get().await.unwrap();
     outbox::db::insert_event(
-        &mut *conn,
+        &client,
         id,
         "user",
         aggregate_id,
@@ -114,10 +118,10 @@ async fn outbox_fetch_respects_batch_size() {
     let test_db = TestDb::new().await;
     let pool = test_db.pool();
 
-    let mut conn = pool.acquire().await.unwrap();
+    let client = pool.get().await.unwrap();
     for _ in 0..5 {
         outbox::db::insert_event(
-            &mut *conn,
+            &client,
             Uuid::now_v7(),
             "user",
             Uuid::now_v7(),
@@ -140,27 +144,15 @@ async fn outbox_advisory_lock_leader_election() {
     let pool = test_db.pool();
 
     // First connection acquires lock
-    let mut conn1 = pool.acquire().await.unwrap();
-    assert!(
-        outbox::db::try_acquire_leader_lock(&mut *conn1)
-            .await
-            .unwrap()
-    );
+    let conn1 = pool.get().await.unwrap();
+    assert!(outbox::db::try_acquire_leader_lock(&conn1).await.unwrap());
 
     // Same connection re-acquires (idempotent)
-    assert!(
-        outbox::db::try_acquire_leader_lock(&mut *conn1)
-            .await
-            .unwrap()
-    );
+    assert!(outbox::db::try_acquire_leader_lock(&conn1).await.unwrap());
 
     // Second connection cannot acquire it
-    let mut conn2 = pool.acquire().await.unwrap();
-    assert!(
-        !outbox::db::try_acquire_leader_lock(&mut *conn2)
-            .await
-            .unwrap()
-    );
+    let conn2 = pool.get().await.unwrap();
+    assert!(!outbox::db::try_acquire_leader_lock(&conn2).await.unwrap());
 }
 
 #[tokio::test]
@@ -170,7 +162,7 @@ async fn sign_up_inserts_auth_email_outbox_event() {
     let test_db = TestDb::new().await;
     let pool = test_db.pool();
 
-    identity::services::sign_up::execute(
+    sign_up::execute(
         pool,
         "outboxuser",
         "outbox@example.com",

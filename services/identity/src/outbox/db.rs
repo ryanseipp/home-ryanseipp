@@ -1,5 +1,5 @@
 use chrono::{DateTime, Utc};
-use sqlx::{PgConnection, PgPool};
+use deadpool_postgres::{GenericClient, Pool};
 use uuid::Uuid;
 
 use super::OutboxError;
@@ -26,7 +26,7 @@ pub struct OutboxRow {
 /// outbox event is written atomically with the domain operation.
 #[allow(clippy::too_many_arguments)]
 pub async fn insert_event(
-    conn: &mut PgConnection,
+    client: &impl GenericClient,
     id: Uuid,
     aggregate_type: &str,
     aggregate_id: Uuid,
@@ -35,19 +35,13 @@ pub async fn insert_event(
     trace_id: Option<&str>,
     span_id: Option<&str>,
 ) -> Result<(), OutboxError> {
-    sqlx::query!(
-        "INSERT INTO outbox (id, aggregate_type, aggregate_id, event_type, payload, trace_id, span_id)
-         VALUES ($1, $2, $3, $4, $5, $6, $7)",
-        id,
-        aggregate_type,
-        aggregate_id,
-        event_type,
-        payload,
-        trace_id,
-        span_id,
-    )
-    .execute(conn)
-    .await?;
+    client
+        .execute(
+            "INSERT INTO outbox (id, aggregate_type, aggregate_id, event_type, payload, trace_id, span_id)
+             VALUES ($1, $2, $3, $4, $5, $6, $7)",
+            &[&id, &aggregate_type, &aggregate_id, &event_type, &payload, &trace_id, &span_id],
+        )
+        .await?;
 
     Ok(())
 }
@@ -55,41 +49,60 @@ pub async fn insert_event(
 /// Attempt to acquire the outbox publisher advisory lock.
 ///
 /// Uses a session-level advisory lock so it auto-releases when the connection
-/// drops. Must be called on a **dedicated** (non-pooled) connection.
-/// Returns `true` if this connection now holds the lock.
-pub async fn try_acquire_leader_lock(conn: &mut PgConnection) -> Result<bool, OutboxError> {
-    let row = sqlx::query_scalar!("SELECT pg_try_advisory_lock($1)", OUTBOX_PUBLISHER_LOCK_ID,)
-        .fetch_one(conn)
+/// drops. Must be called on a **dedicated** connection held for the publisher's
+/// lifetime. Returns `true` if this connection now holds the lock.
+pub async fn try_acquire_leader_lock(client: &impl GenericClient) -> Result<bool, OutboxError> {
+    let row = client
+        .query_one(
+            "SELECT pg_try_advisory_lock($1)",
+            &[&OUTBOX_PUBLISHER_LOCK_ID],
+        )
         .await?;
 
-    Ok(row.unwrap_or(false))
+    Ok(row.get::<_, Option<bool>>(0).unwrap_or(false))
 }
 
 /// Fetch unpublished outbox events ordered by creation time.
 pub async fn fetch_unpublished(
-    pool: &PgPool,
+    pool: &Pool,
     batch_size: i64,
 ) -> Result<Vec<OutboxRow>, OutboxError> {
-    let rows = sqlx::query_as!(
-        OutboxRow,
-        r#"SELECT id, aggregate_type, aggregate_id, event_type, payload,
-                  trace_id, span_id, created_at
-           FROM outbox
-           WHERE published_at IS NULL
-           ORDER BY created_at ASC
-           LIMIT $1"#,
-        batch_size,
-    )
-    .fetch_all(pool)
-    .await?;
+    let client = pool.get().await?;
+    let rows = client
+        .query(
+            r#"SELECT id, aggregate_type, aggregate_id, event_type, payload,
+                      trace_id, span_id, created_at
+               FROM outbox
+               WHERE published_at IS NULL
+               ORDER BY created_at ASC
+               LIMIT $1"#,
+            &[&batch_size],
+        )
+        .await?;
 
-    Ok(rows)
+    Ok(rows
+        .into_iter()
+        .map(|row| OutboxRow {
+            id: row.get("id"),
+            aggregate_type: row.get("aggregate_type"),
+            aggregate_id: row.get("aggregate_id"),
+            event_type: row.get("event_type"),
+            payload: row.get("payload"),
+            trace_id: row.get("trace_id"),
+            span_id: row.get("span_id"),
+            created_at: row.get("created_at"),
+        })
+        .collect())
 }
 
 /// Mark an outbox event as published.
-pub async fn mark_published(pool: &PgPool, id: Uuid) -> Result<(), OutboxError> {
-    sqlx::query!("UPDATE outbox SET published_at = NOW() WHERE id = $1", id,)
-        .execute(pool)
+pub async fn mark_published(pool: &Pool, id: Uuid) -> Result<(), OutboxError> {
+    let client = pool.get().await?;
+    client
+        .execute(
+            "UPDATE outbox SET published_at = NOW() WHERE id = $1",
+            &[&id],
+        )
         .await?;
 
     Ok(())

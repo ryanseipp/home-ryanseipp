@@ -1,5 +1,5 @@
+use deadpool_postgres::Pool;
 use prost::Message;
-use sqlx::{PgConnection, PgPool};
 use uuid::Uuid;
 
 use crate::crypto;
@@ -18,7 +18,10 @@ const TOKEN_EXPIRES_MINUTES: i32 = 60;
 #[derive(Debug, thiserror::Error)]
 pub enum ResendVerificationError {
     #[error("database error")]
-    Db(#[from] sqlx::Error),
+    Db(#[from] tokio_postgres::Error),
+
+    #[error("pool error")]
+    Pool(#[from] deadpool_postgres::PoolError),
 
     #[error("crypto error")]
     Crypto(#[from] crypto::CryptoError),
@@ -36,14 +39,14 @@ pub enum ResendVerificationError {
 /// Only returns errors for rate limiting.
 #[tracing::instrument(skip(pool, web_base_url))]
 pub async fn execute(
-    pool: &PgPool,
+    pool: &Pool,
     email: &str,
     web_base_url: &str,
 ) -> Result<(), ResendVerificationError> {
-    let mut tx = pool.begin().await?;
+    let mut client = pool.get().await?;
 
     // Look up user — if not found, return Ok (prevent enumeration)
-    let user = match super::get_user_by_email(&mut tx, email).await {
+    let user = match super::get_user_by_email(&client, email).await {
         Ok(Some(u)) => u,
         Ok(None) | Err(_) => return Ok(()),
     };
@@ -55,7 +58,7 @@ pub async fn execute(
     }
 
     // Rate limit: max 3 tokens per hour
-    let recent_count = count_recent_tokens(&mut tx, user.id).await?;
+    let recent_count = count_recent_tokens(&client, user.id).await?;
     if recent_count >= MAX_TOKENS_PER_HOUR {
         return Err(ResendVerificationError::RateLimited);
     }
@@ -92,12 +95,14 @@ pub async fn execute(
     let payload = event.encode_to_vec();
 
     // Transaction: insert token + insert outbox event
-    super::insert_token(&mut tx, token_id, user.id, &token_hash_bytes, expires_at)
+    let tx = client.transaction().await?;
+
+    super::insert_token(&tx, token_id, user.id, &token_hash_bytes, expires_at)
         .await
         .map_err(ResendVerificationError::Db)?;
 
     outbox::db::insert_event(
-        &mut tx,
+        &tx,
         outbox_id,
         "user",
         user.id,
@@ -117,14 +122,17 @@ pub async fn execute(
 
 /// Count recent tokens for a user (for rate limiting).
 /// Returns the number of tokens created in the last hour.
-async fn count_recent_tokens(conn: &mut PgConnection, user_id: Uuid) -> Result<i64, sqlx::Error> {
-    let row = sqlx::query_scalar!(
-        "SELECT COUNT(*) FROM email_verification_tokens
-         WHERE user_id = $1 AND created_at > NOW() - INTERVAL '1 hour'",
-        user_id,
-    )
-    .fetch_one(conn)
-    .await?;
+async fn count_recent_tokens(
+    client: &impl deadpool_postgres::GenericClient,
+    user_id: Uuid,
+) -> Result<i64, tokio_postgres::Error> {
+    let row = client
+        .query_one(
+            "SELECT COUNT(*) FROM email_verification_tokens
+             WHERE user_id = $1 AND created_at > NOW() - INTERVAL '1 hour'",
+            &[&user_id],
+        )
+        .await?;
 
-    Ok(row.unwrap_or(0))
+    Ok(row.get::<_, Option<i64>>(0).unwrap_or(0))
 }

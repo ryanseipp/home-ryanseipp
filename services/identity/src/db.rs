@@ -1,24 +1,47 @@
-use std::path::Path;
+use std::str::FromStr;
+use std::sync::Arc;
 
-use sqlx::PgPool;
-use sqlx::postgres::{PgConnectOptions, PgPoolOptions, PgSslMode};
+use deadpool_postgres::{Manager, ManagerConfig, Pool, RecyclingMethod};
+use tokio_postgres::NoTls;
+use tokio_postgres_rustls::MakeRustlsConnect;
 
 use crate::config::DbConfig;
+
+mod embedded {
+    use refinery::embed_migrations;
+    embed_migrations!("./migrations");
+}
+
+/// Errors from database pool creation and migration.
+#[derive(Debug, thiserror::Error)]
+pub enum DatabaseError {
+    #[error("invalid connection config: {0}")]
+    Config(#[from] tokio_postgres::Error),
+
+    #[error("failed to build pool: {0}")]
+    Build(#[from] deadpool_postgres::BuildError),
+
+    #[error("failed to get connection: {0}")]
+    Pool(#[from] deadpool_postgres::PoolError),
+
+    #[error("migration failed: {0}")]
+    Migration(Box<refinery::Error>),
+}
 
 /// Database connection pool with write-primary / read-replica routing.
 ///
 /// When no read replica is configured, `reader()` returns the writer pool.
 #[derive(Clone)]
 pub struct DatabasePool {
-    writer: PgPool,
-    reader: PgPool,
+    writer: Pool,
+    reader: Pool,
 }
 
 impl DatabasePool {
-    /// Wrap an existing `PgPool` as both writer and reader.
+    /// Wrap an existing `Pool` as both writer and reader.
     ///
     /// Useful for tests where the pool is created from a testcontainers URL.
-    pub fn from_pool(pool: PgPool) -> Self {
+    pub fn from_pool(pool: Pool) -> Self {
         Self {
             writer: pool.clone(),
             reader: pool,
@@ -27,107 +50,84 @@ impl DatabasePool {
 
     /// Connect to the database(s) and return a pool pair.
     ///
-    /// Runs TLS configuration when cert files exist on disk; falls back to
-    /// `PgSslMode::Prefer` for development/testing environments without TLS.
-    pub async fn connect(db: &DbConfig, db_read: Option<&DbConfig>) -> Result<Self, sqlx::Error> {
-        let writer_opts = build_connect_options(db);
-
-        let writer = PgPoolOptions::new()
-            .max_connections(db.max_connections)
-            .min_connections(db.min_connections)
-            .connect_with(writer_opts)
-            .await?;
+    /// The `tls` config should be built via `spiffe_rustls::mtls_client()` so
+    /// that its dynamic cert resolver handles SVID rotation automatically.
+    pub fn connect(
+        db: &DbConfig,
+        db_read: Option<&DbConfig>,
+        tls: Arc<rustls::ClientConfig>,
+    ) -> Result<Self, DatabaseError> {
+        let writer = build_pool(db, Arc::clone(&tls))?;
 
         let reader = match db_read {
-            Some(read_cfg) => {
-                let reader_opts = build_connect_options(read_cfg);
-
-                PgPoolOptions::new()
-                    .max_connections(read_cfg.max_connections)
-                    .min_connections(read_cfg.min_connections)
-                    .connect_with(reader_opts)
-                    .await?
-            }
+            Some(read_cfg) => build_pool(read_cfg, Arc::clone(&tls))?,
             None => writer.clone(),
         };
 
         Ok(Self { writer, reader })
     }
 
+    /// Create a pool from a connection URL without TLS (for tests).
+    pub fn from_url(url: &str, max_size: usize) -> Result<Self, DatabaseError> {
+        let pg_config = tokio_postgres::Config::from_str(url)?;
+        let mgr = Manager::from_config(
+            pg_config,
+            NoTls,
+            ManagerConfig {
+                recycling_method: RecyclingMethod::Fast,
+            },
+        );
+        let pool = Pool::builder(mgr).max_size(max_size).build()?;
+        Ok(Self::from_pool(pool))
+    }
+
     /// Writer pool — use for INSERT / UPDATE / DELETE.
-    pub fn writer(&self) -> &PgPool {
+    pub fn writer(&self) -> &Pool {
         &self.writer
     }
 
     /// Reader pool — use for SELECT. Routes to replica if configured,
     /// otherwise returns the writer pool.
-    pub fn reader(&self) -> &PgPool {
+    pub fn reader(&self) -> &Pool {
         &self.reader
     }
 
     /// Run embedded migrations on the writer (primary) database.
-    pub async fn migrate(&self) -> Result<(), sqlx::migrate::MigrateError> {
-        sqlx::migrate!("./migrations").run(&self.writer).await
-    }
-
-    /// Gracefully close both connection pools.
-    pub async fn close(&self) {
-        self.writer.close().await;
-        self.reader.close().await;
-    }
-}
-
-/// Parse an SSL mode string into `PgSslMode`.
-fn parse_ssl_mode(mode: &str) -> PgSslMode {
-    match mode {
-        "disable" => PgSslMode::Disable,
-        "allow" => PgSslMode::Allow,
-        "prefer" => PgSslMode::Prefer,
-        "require" => PgSslMode::Require,
-        "verify-ca" => PgSslMode::VerifyCa,
-        "verify-full" => PgSslMode::VerifyFull,
-        other => {
-            tracing::warn!(
-                ssl_mode = other,
-                "unknown ssl_mode, falling back to verify-full"
-            );
-            PgSslMode::VerifyFull
-        }
+    pub async fn migrate(&self) -> Result<(), DatabaseError> {
+        let mut client = self.writer.get().await?;
+        embedded::migrations::runner()
+            .run_async(&mut **client)
+            .await
+            .map_err(|e| DatabaseError::Migration(Box::new(e)))?;
+        Ok(())
     }
 }
 
-/// Build `PgConnectOptions` from config values.
-///
-/// Applies TLS settings only when the CA cert file exists on disk. This lets
-/// the same binary work in TLS-enabled production (cert-manager mounts certs)
-/// and in plain development/testing environments (no certs mounted).
-fn build_connect_options(cfg: &DbConfig) -> PgConnectOptions {
-    let mut opts = PgConnectOptions::new()
+/// Build a deadpool-postgres pool from config with TLS.
+fn build_pool(cfg: &DbConfig, tls: Arc<rustls::ClientConfig>) -> Result<Pool, DatabaseError> {
+    let mut pg_config = tokio_postgres::Config::new();
+    pg_config
         .host(&cfg.host)
         .port(cfg.port)
-        .database(&cfg.database)
-        .username(&cfg.username);
+        .dbname(&cfg.database)
+        .user(&cfg.username);
 
     if let Some(pw) = &cfg.password {
-        opts = opts.password(pw);
+        pg_config.password(pw);
     }
 
-    // When TLS cert files exist, use the configured SSL mode with full cert chain.
-    // Otherwise fall back to Prefer for dev/test (e.g. testcontainers without TLS).
-    if Path::new(&cfg.ssl_root_cert).exists() {
-        opts = opts
-            .ssl_mode(parse_ssl_mode(&cfg.ssl_mode))
-            .ssl_root_cert(&cfg.ssl_root_cert);
+    let tls_connector = MakeRustlsConnect::new(Arc::unwrap_or_clone(tls));
+    let mgr = Manager::from_config(
+        pg_config,
+        tls_connector,
+        ManagerConfig {
+            recycling_method: RecyclingMethod::Fast,
+        },
+    );
 
-        // Client certs for mTLS auth — only set if files exist.
-        if Path::new(&cfg.ssl_client_cert).exists() && Path::new(&cfg.ssl_client_key).exists() {
-            opts = opts
-                .ssl_client_cert(&cfg.ssl_client_cert)
-                .ssl_client_key(&cfg.ssl_client_key);
-        }
-    } else {
-        opts = opts.ssl_mode(PgSslMode::Prefer);
-    }
+    let pool = Pool::builder(mgr)
+        .max_size(cfg.max_connections as usize)
+        .build()?;
 
-    opts
+    Ok(pool)
 }

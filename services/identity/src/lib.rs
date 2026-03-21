@@ -5,4 +5,5 @@ pub mod outbox;
 pub mod proto;
 pub mod server;
 pub mod services;
+pub mod spiffe;
 pub mod telemetry;

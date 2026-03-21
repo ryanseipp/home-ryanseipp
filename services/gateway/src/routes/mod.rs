@@ -1,15 +1,30 @@
+pub mod auth;
+pub mod error;
 pub mod health;
+
+use std::sync::Arc;
 
 use axum::Router;
 use tower_http::trace::TraceLayer;
 
-use crate::config::AppConfig;
+use crate::pool::IdentityChannel;
+
+/// Shared application state available to route handlers.
+#[derive(Clone)]
+pub struct AppState {
+    pub identity: Arc<IdentityChannel>,
+}
 
 /// Build the application router with all routes and middleware.
-pub async fn router(_config: &AppConfig) -> Result<Router, Box<dyn std::error::Error>> {
-    let app = Router::new()
-        .merge(health::routes())
-        .layer(TraceLayer::new_for_http());
+///
+/// When `state` is `Some`, auth routes are mounted. Health routes
+/// are always available regardless of backend connectivity.
+pub fn router(state: Option<AppState>) -> Router {
+    let mut app = Router::new().merge(health::routes());
 
-    Ok(app)
+    if let Some(s) = state {
+        app = app.merge(auth::routes().with_state(s));
+    }
+
+    app.layer(TraceLayer::new_for_http())
 }

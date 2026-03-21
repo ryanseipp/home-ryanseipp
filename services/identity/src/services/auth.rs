@@ -1,15 +1,15 @@
 use base64ct::{Base64UrlUnpadded, Encoding};
-use sqlx::PgPool;
+use deadpool_postgres::Pool;
 use tonic::{Request, Status};
 use uuid::Uuid;
 
 use crate::crypto::jwk::Algorithm;
-use crate::crypto::jwt::{JwtHeader, VerificationOptions};
+use crate::crypto::jwt::{JwtHeader, VerificationOptions, verify_jwt};
 
 /// Authenticate a gRPC request by validating the Bearer JWT.
 ///
 /// Returns the user's UUID from the `sub` claim on success.
-pub(crate) async fn authenticate<T>(request: &Request<T>, pool: &PgPool) -> Result<Uuid, Status> {
+pub(crate) async fn authenticate<T>(request: &Request<T>, pool: &Pool) -> Result<Uuid, Status> {
     let token = extract_bearer_token(request)?;
 
     // Decode header to get kid
@@ -40,8 +40,8 @@ pub(crate) async fn authenticate<T>(request: &Request<T>, pool: &PgPool) -> Resu
         leeway: 30,
     };
 
-    let claims = crate::crypto::jwt::verify_jwt(token, jwk, &options)
-        .map_err(|_| Status::unauthenticated("invalid token"))?;
+    let claims =
+        verify_jwt(token, jwk, &options).map_err(|_| Status::unauthenticated("invalid token"))?;
 
     // Parse sub as UUID
     let sub = claims

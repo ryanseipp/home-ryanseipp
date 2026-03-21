@@ -1,4 +1,4 @@
-use sqlx::PgPool;
+use deadpool_postgres::Pool;
 use uuid::Uuid;
 
 use super::validation;
@@ -6,7 +6,10 @@ use super::validation;
 #[derive(Debug, thiserror::Error)]
 pub enum UpdateProfileError {
     #[error("database error")]
-    Db(#[from] sqlx::Error),
+    Db(#[from] tokio_postgres::Error),
+
+    #[error("pool error")]
+    Pool(#[from] deadpool_postgres::PoolError),
 
     #[error("no fields provided")]
     NoFieldsProvided,
@@ -20,7 +23,7 @@ pub enum UpdateProfileError {
 
 #[tracing::instrument(skip(pool))]
 pub async fn execute(
-    pool: &PgPool,
+    pool: &Pool,
     user_id: Uuid,
     given_name: Option<&str>,
     family_name: Option<&str>,
@@ -34,26 +37,26 @@ pub async fn execute(
         validation::validate_username(u).map_err(UpdateProfileError::InvalidUsername)?;
     }
 
-    sqlx::query!(
-        "UPDATE users
-         SET given_name = COALESCE($2, given_name),
-             family_name = COALESCE($3, family_name),
-             username = COALESCE($4, username),
-             updated_at = NOW()
-         WHERE id = $1 AND deleted_at IS NULL",
-        user_id,
-        given_name,
-        family_name,
-        username,
-    )
-    .execute(pool)
-    .await
-    .map_err(|e| match &e {
-        sqlx::Error::Database(db_err) if db_err.constraint() == Some("idx_users_username") => {
-            UpdateProfileError::UsernameTaken
-        }
-        _ => UpdateProfileError::Db(e),
-    })?;
+    let client = pool.get().await?;
+    client
+        .execute(
+            "UPDATE users
+             SET given_name = COALESCE($2, given_name),
+                 family_name = COALESCE($3, family_name),
+                 username = COALESCE($4, username),
+                 updated_at = NOW()
+             WHERE id = $1 AND deleted_at IS NULL",
+            &[&user_id, &given_name, &family_name, &username],
+        )
+        .await
+        .map_err(|e| {
+            if let Some(db_err) = e.as_db_error()
+                && db_err.constraint() == Some("idx_users_username")
+            {
+                return UpdateProfileError::UsernameTaken;
+            }
+            UpdateProfileError::Db(e)
+        })?;
 
     Ok(())
 }

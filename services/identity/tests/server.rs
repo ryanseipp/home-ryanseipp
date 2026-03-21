@@ -4,9 +4,18 @@ mod helpers;
 
 use identity::config::{AppConfig, DbConfig, KafkaConfig};
 use identity::db::DatabasePool;
-use identity::proto::GetJwksRequest;
 use identity::proto::identity_service_client::IdentityServiceClient;
+use identity::proto::{
+    GetJwksRequest, LoginRequest, ResendVerificationRequest, SignUpRequest, UpdatePasswordRequest,
+    UpdateProfileRequest, UserInfoRequest, VerifyEmailRequest,
+};
+use identity::server::run;
+use identity::services::ensure_signing_key;
+use rustls::pki_types::{CertificateDer, PrivateKeyDer, ServerName};
+use rustls::{ClientConfig, RootCertStore, ServerConfig};
 use tokio::net::TcpListener;
+use tonic::Code;
+use tonic::transport::Endpoint;
 
 use helpers::{
     activate_user_by_email, authenticated_request, random_user_data, register_activate_login,
@@ -36,7 +45,7 @@ async fn sign_up_succeeds() {
 
     let user = random_user_data();
     client
-        .sign_up(identity::proto::SignUpRequest {
+        .sign_up(SignUpRequest {
             username: user.username,
             given_name: user.given_name,
             family_name: user.family_name,
@@ -57,7 +66,7 @@ async fn sign_up_duplicate_username_fails() {
 
     let user1 = random_user_data();
     client
-        .sign_up(identity::proto::SignUpRequest {
+        .sign_up(SignUpRequest {
             username: user1.username.clone(),
             given_name: user1.given_name,
             family_name: user1.family_name,
@@ -69,7 +78,7 @@ async fn sign_up_duplicate_username_fails() {
 
     let user2 = random_user_data();
     let err = client
-        .sign_up(identity::proto::SignUpRequest {
+        .sign_up(SignUpRequest {
             username: user1.username, // duplicate
             given_name: user2.given_name,
             family_name: user2.family_name,
@@ -78,7 +87,7 @@ async fn sign_up_duplicate_username_fails() {
         })
         .await
         .unwrap_err();
-    assert_eq!(err.code(), tonic::Code::AlreadyExists);
+    assert_eq!(err.code(), Code::AlreadyExists);
 }
 
 #[tokio::test]
@@ -91,7 +100,7 @@ async fn sign_up_validation_errors() {
 
     // No password
     let err = client
-        .sign_up(identity::proto::SignUpRequest {
+        .sign_up(SignUpRequest {
             username: "testuser".into(),
             given_name: "Test".into(),
             family_name: "User".into(),
@@ -100,11 +109,11 @@ async fn sign_up_validation_errors() {
         })
         .await
         .unwrap_err();
-    assert_eq!(err.code(), tonic::Code::InvalidArgument);
+    assert_eq!(err.code(), Code::InvalidArgument);
 
     // Short password
     let err = client
-        .sign_up(identity::proto::SignUpRequest {
+        .sign_up(SignUpRequest {
             username: "testuser".into(),
             given_name: "Test".into(),
             family_name: "User".into(),
@@ -113,11 +122,11 @@ async fn sign_up_validation_errors() {
         })
         .await
         .unwrap_err();
-    assert_eq!(err.code(), tonic::Code::InvalidArgument);
+    assert_eq!(err.code(), Code::InvalidArgument);
 
     // Invalid username
     let err = client
-        .sign_up(identity::proto::SignUpRequest {
+        .sign_up(SignUpRequest {
             username: "bad user!".into(),
             given_name: "Test".into(),
             family_name: "User".into(),
@@ -126,7 +135,7 @@ async fn sign_up_validation_errors() {
         })
         .await
         .unwrap_err();
-    assert_eq!(err.code(), tonic::Code::InvalidArgument);
+    assert_eq!(err.code(), Code::InvalidArgument);
 }
 
 #[tokio::test]
@@ -138,12 +147,12 @@ async fn verify_email_with_bad_token_returns_not_found() {
         .unwrap();
 
     let err = client
-        .verify_email(identity::proto::VerifyEmailRequest {
+        .verify_email(VerifyEmailRequest {
             token: "invalid-token-not-base64url".into(),
         })
         .await
         .unwrap_err();
-    assert_eq!(err.code(), tonic::Code::NotFound);
+    assert_eq!(err.code(), Code::NotFound);
 }
 
 #[tokio::test]
@@ -156,7 +165,7 @@ async fn resend_verification_for_unknown_email_returns_ok() {
 
     // Should return OK even for unknown email (prevent enumeration)
     client
-        .resend_verification(identity::proto::ResendVerificationRequest {
+        .resend_verification(ResendVerificationRequest {
             email: "nonexistent@example.com".into(),
         })
         .await
@@ -186,7 +195,7 @@ async fn login_with_wrong_password_fails() {
 
     let user = random_user_data();
     client
-        .sign_up(identity::proto::SignUpRequest {
+        .sign_up(SignUpRequest {
             username: user.username,
             given_name: user.given_name,
             family_name: user.family_name,
@@ -198,13 +207,13 @@ async fn login_with_wrong_password_fails() {
     activate_user_by_email(&pool, &user.email).await;
 
     let err = client
-        .login(identity::proto::LoginRequest {
+        .login(LoginRequest {
             email: user.email,
             password: "wrong-password".into(),
         })
         .await
         .unwrap_err();
-    assert_eq!(err.code(), tonic::Code::Unauthenticated);
+    assert_eq!(err.code(), Code::Unauthenticated);
 }
 
 #[tokio::test]
@@ -216,13 +225,13 @@ async fn login_with_unknown_email_fails() {
         .unwrap();
 
     let err = client
-        .login(identity::proto::LoginRequest {
+        .login(LoginRequest {
             email: "nonexistent@example.com".into(),
             password: "password123".into(),
         })
         .await
         .unwrap_err();
-    assert_eq!(err.code(), tonic::Code::Unauthenticated);
+    assert_eq!(err.code(), Code::Unauthenticated);
 }
 
 #[tokio::test]
@@ -235,7 +244,7 @@ async fn login_with_pending_verification_fails() {
 
     let user = random_user_data();
     client
-        .sign_up(identity::proto::SignUpRequest {
+        .sign_up(SignUpRequest {
             username: user.username,
             given_name: user.given_name,
             family_name: user.family_name,
@@ -246,13 +255,13 @@ async fn login_with_pending_verification_fails() {
         .unwrap();
 
     let err = client
-        .login(identity::proto::LoginRequest {
+        .login(LoginRequest {
             email: user.email,
             password: user.password,
         })
         .await
         .unwrap_err();
-    assert_eq!(err.code(), tonic::Code::PermissionDenied);
+    assert_eq!(err.code(), Code::PermissionDenied);
 }
 
 // --- UserInfo tests ---
@@ -269,10 +278,7 @@ async fn user_info_returns_profile() {
     let token = register_activate_login(&mut client, &pool, &user).await;
 
     let response = client
-        .user_info(authenticated_request(
-            identity::proto::UserInfoRequest {},
-            &token,
-        ))
+        .user_info(authenticated_request(UserInfoRequest {}, &token))
         .await
         .unwrap();
 
@@ -293,11 +299,8 @@ async fn user_info_without_auth_fails() {
         .await
         .unwrap();
 
-    let err = client
-        .user_info(identity::proto::UserInfoRequest {})
-        .await
-        .unwrap_err();
-    assert_eq!(err.code(), tonic::Code::Unauthenticated);
+    let err = client.user_info(UserInfoRequest {}).await.unwrap_err();
+    assert_eq!(err.code(), Code::Unauthenticated);
 }
 
 // --- UpdateProfile tests ---
@@ -316,7 +319,7 @@ async fn update_profile_changes_username() {
     let new_username = format!("new-{}", &user.username[..8]);
     client
         .update_profile(authenticated_request(
-            identity::proto::UpdateProfileRequest {
+            UpdateProfileRequest {
                 given_name: None,
                 family_name: None,
                 username: Some(new_username.clone()),
@@ -328,10 +331,7 @@ async fn update_profile_changes_username() {
 
     // Verify via UserInfo
     let info = client
-        .user_info(authenticated_request(
-            identity::proto::UserInfoRequest {},
-            &token,
-        ))
+        .user_info(authenticated_request(UserInfoRequest {}, &token))
         .await
         .unwrap()
         .into_inner();
@@ -351,7 +351,7 @@ async fn update_profile_changes_names() {
 
     client
         .update_profile(authenticated_request(
-            identity::proto::UpdateProfileRequest {
+            UpdateProfileRequest {
                 given_name: Some("NewFirst".into()),
                 family_name: Some("NewLast".into()),
                 username: None,
@@ -362,10 +362,7 @@ async fn update_profile_changes_names() {
         .unwrap();
 
     let info = client
-        .user_info(authenticated_request(
-            identity::proto::UserInfoRequest {},
-            &token,
-        ))
+        .user_info(authenticated_request(UserInfoRequest {}, &token))
         .await
         .unwrap()
         .into_inner();
@@ -390,7 +387,7 @@ async fn update_profile_duplicate_username_fails() {
     // user2 tries to take user1's username
     let err = client
         .update_profile(authenticated_request(
-            identity::proto::UpdateProfileRequest {
+            UpdateProfileRequest {
                 given_name: None,
                 family_name: None,
                 username: Some(user1.username),
@@ -399,7 +396,7 @@ async fn update_profile_duplicate_username_fails() {
         ))
         .await
         .unwrap_err();
-    assert_eq!(err.code(), tonic::Code::AlreadyExists);
+    assert_eq!(err.code(), Code::AlreadyExists);
 }
 
 // --- UpdatePassword tests ---
@@ -419,7 +416,7 @@ async fn update_password_succeeds() {
 
     client
         .update_password(authenticated_request(
-            identity::proto::UpdatePasswordRequest {
+            UpdatePasswordRequest {
                 current_password: user.password.clone(),
                 new_password: new_password.into(),
             },
@@ -430,7 +427,7 @@ async fn update_password_succeeds() {
 
     // Verify login with new password works
     let response = client
-        .login(identity::proto::LoginRequest {
+        .login(LoginRequest {
             email: user.email,
             password: new_password.into(),
         })
@@ -452,7 +449,7 @@ async fn update_password_wrong_current_fails() {
 
     let err = client
         .update_password(authenticated_request(
-            identity::proto::UpdatePasswordRequest {
+            UpdatePasswordRequest {
                 current_password: "wrong-password".into(),
                 new_password: "new-secure-password-123".into(),
             },
@@ -460,7 +457,7 @@ async fn update_password_wrong_current_fails() {
         ))
         .await
         .unwrap_err();
-    assert_eq!(err.code(), tonic::Code::Unauthenticated);
+    assert_eq!(err.code(), Code::Unauthenticated);
 }
 
 // --- TLS test ---
@@ -468,43 +465,35 @@ async fn update_password_wrong_current_fails() {
 #[tokio::test]
 async fn server_accepts_tls_connections() {
     use rcgen::generate_simple_self_signed;
-    use std::io::Write;
-    use tonic::transport::{Certificate, Channel, ClientTlsConfig};
+    use rustls::crypto::aws_lc_rs;
+    use std::sync::Arc;
+    use tokio::task;
+    use tonic_tls::rustls::TlsConnector;
 
-    let _ = rustls::crypto::aws_lc_rs::default_provider().install_default();
+    let _ = aws_lc_rs::default_provider().install_default();
 
     let (_container, pool) = test_db_pool().await;
 
     let kek = test_kek();
-    identity::services::ensure_signing_key(&pool, &kek)
-        .await
-        .unwrap();
+    ensure_signing_key(&pool, &kek).await.unwrap();
 
     let subject_alt_names = vec!["::1".into(), "localhost".into()];
     let certified_key = generate_simple_self_signed(subject_alt_names).unwrap();
 
-    let cert_pem = certified_key.cert.pem();
-    let key_pem = certified_key.signing_key.serialize_pem();
+    // Build a rustls ServerConfig directly (no SPIRE, no files)
+    let cert_chain = vec![CertificateDer::from(certified_key.cert.der().to_vec())];
+    let key = PrivateKeyDer::try_from(certified_key.signing_key.serialize_der().to_vec()).unwrap();
 
-    let dir = tempfile::tempdir().unwrap();
-    let cert_path = dir.path().join("tls.crt");
-    let key_path = dir.path().join("tls.key");
-
-    std::fs::File::create(&cert_path)
-        .unwrap()
-        .write_all(cert_pem.as_bytes())
+    let mut server_config = ServerConfig::builder()
+        .with_no_client_auth()
+        .with_single_cert(cert_chain, key)
         .unwrap();
-    std::fs::File::create(&key_path)
-        .unwrap()
-        .write_all(key_pem.as_bytes())
-        .unwrap();
+    server_config.alpn_protocols = vec![b"h2".to_vec()];
 
     let listener = TcpListener::bind("[::1]:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
     let config = AppConfig {
         listen_addr: addr,
-        tls_cert_file: cert_path.to_str().unwrap().into(),
-        tls_key_file: key_path.to_str().unwrap().into(),
         web_base_url: "https://test.example.com".into(),
         db: DbConfig {
             host: String::new(),
@@ -512,36 +501,43 @@ async fn server_accepts_tls_connections() {
             database: String::new(),
             username: String::new(),
             password: None,
-            ssl_mode: "disable".into(),
-            ssl_root_cert: String::new(),
-            ssl_client_cert: String::new(),
-            ssl_client_key: String::new(),
             max_connections: 2,
-            min_connections: 1,
         },
         db_read: None,
         kafka: KafkaConfig::default(),
+        spiffe_endpoint_socket: None,
     };
     let db = DatabasePool::from_pool(pool);
 
     tokio::spawn(async move {
-        identity::server::run(listener, &config, db, kek)
-            .await
-            .unwrap();
-    });
-    tokio::task::yield_now().await;
-
-    let tls_config = ClientTlsConfig::new()
-        .ca_certificate(Certificate::from_pem(&cert_pem))
-        .domain_name("::1");
-
-    let channel = Channel::from_shared(format!("https://[::1]:{}", addr.port()))
-        .unwrap()
-        .tls_config(tls_config)
-        .unwrap()
-        .connect()
+        run(
+            listener,
+            &config.web_base_url,
+            db,
+            kek,
+            Some(Arc::new(server_config)),
+        )
         .await
         .unwrap();
+    });
+    task::yield_now().await;
+
+    // Build a rustls ClientConfig trusting the self-signed CA
+    let mut root_store = RootCertStore::empty();
+    root_store.add(certified_key.cert.der().clone()).unwrap();
+    let mut client_tls = ClientConfig::builder()
+        .with_root_certificates(root_store)
+        .with_no_client_auth();
+    client_tls.alpn_protocols = vec![b"h2".to_vec()];
+
+    let endpoint = Endpoint::from_shared(format!("https://[::1]:{}", addr.port())).unwrap();
+    let transport = tonic_tls::TcpTransport::from_endpoint(&endpoint);
+    let connector = TlsConnector::new(
+        transport,
+        Arc::new(client_tls),
+        ServerName::try_from("::1").unwrap(),
+    );
+    let channel = endpoint.connect_with_connector(connector).await.unwrap();
 
     let mut client = IdentityServiceClient::new(channel);
 

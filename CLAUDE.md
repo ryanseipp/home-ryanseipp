@@ -132,6 +132,11 @@ sops -d secrets.sops.yaml                   # Decrypt
   pre-existing issue while working nearby, fix it. Do not skip, ignore, or work
   around known problems.
 
+## Dependency Documentation
+
+- To read dependency docs and API definitions, use `cargo doc` and read from
+  `target/doc/`, or search docs.rs directly.
+
 ## Architecture
 
 ### Service Types

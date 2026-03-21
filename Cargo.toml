@@ -13,6 +13,7 @@ warnings = "deny"
 
 [workspace.lints.clippy]
 all = { level = "deny", priority = -1 }
+absolute_paths = { level = "deny", priority = 1 }
 
 [workspace.dependencies]
 async-trait = "0.1.89"
@@ -27,6 +28,7 @@ tokio = { version = "1.50.0", features = ["full"] }
 tonic = "0.14.5"
 tonic-prost = "0.14.5"
 tonic-prost-build = "0.14.5"
+tonic-tls = { version = "0.7.1", default-features = false, features = ["rustls"] }
 uuid = { version = "1.22.0", features = ["v4", "v7"] }
 zeroize = { version = "1.8.2", features = ["derive"] }
 
@@ -34,7 +36,10 @@ zeroize = { version = "1.8.2", features = ["derive"] }
 config = { version = "0.15.19", default-features = false }
 
 # Database
-sqlx = { version = "0.8.6", default-features = false, features = ["runtime-tokio", "tls-rustls-aws-lc-rs", "postgres", "migrate", "macros", "uuid", "json", "chrono"] }
+tokio-postgres = { version = "0.7", features = ["with-uuid-1", "with-serde_json-1", "with-chrono-0_4"] }
+deadpool-postgres = "0.14"
+tokio-postgres-rustls = "0.13"
+refinery = { version = "0.9", features = ["tokio-postgres"] }
 
 # Logging
 json-subscriber = { version = "0.2.7", default-features = false, features = ["tracing-opentelemetry-0-32"] }
@@ -44,7 +49,11 @@ rcgen = { version = "0.14.7", default-features = false, features = ["aws_lc_rs",
 rustls = { version = "0.23.37", default-features = false }
 
 # Kafka
-rskafka = { version = "0.6.0", default-features = false }
+rskafka = { version = "0.6.0", default-features = false, features = ["transport-tls"] }
+
+# SPIFFE / mTLS
+spiffe = { version = "0.12", default-features = false, features = ["x509-source"] }
+spiffe-rustls = { version = "0.4", default-features = false, features = ["aws-lc-rs"] }
 
 # HTTP Framework
 axum = "0.8.8"
@@ -58,6 +67,7 @@ tokio-rustls = { version = "0.26.4", default-features = false, features = ["aws-
 rustls-pemfile = "2.2.0"
 
 # Server
+testcontainers = "0.27"
 tokio-stream = { version = "0.1.18", features = ["net"] }
 tokio-util = { version = "0.7.18", features = ["rt"] }
 

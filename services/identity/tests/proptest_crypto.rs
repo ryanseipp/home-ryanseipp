@@ -1,10 +1,19 @@
+use proptest::collection;
 use proptest::prelude::*;
 
+use identity::crypto::Jwk;
 use identity::crypto::encryption::{decrypt_private_key, encrypt_private_key};
 use identity::crypto::jwk::{Algorithm, generate_key_pair};
 use identity::crypto::jwt::{
     Audience, Claims, VerificationOptions, key_pair_from_pkcs8, sign_jwt, verify_jwt,
 };
+use jsonwebtoken::Algorithm as JtAlgorithm;
+use jsonwebtoken::errors::Error as JtError;
+use jsonwebtoken::jwk::{
+    AlgorithmParameters, CommonParameters, EllipticCurve, EllipticCurveKeyParameters,
+    EllipticCurveKeyType, Jwk as JtJwk, PublicKeyUse,
+};
+use jsonwebtoken::{DecodingKey, Validation, decode};
 
 /// Verify a JWT produced by our implementation using the `jsonwebtoken` crate
 /// (RustCrypto backend) — a completely independent crypto stack.
@@ -12,47 +21,44 @@ use identity::crypto::jwt::{
 /// This confirms our JWTs and JWKs are standards-compliant and interoperable.
 fn verify_with_jsonwebtoken(
     token: &str,
-    jwk: &identity::crypto::Jwk,
-    expected_alg: jsonwebtoken::Algorithm,
-) -> Result<serde_json::Value, jsonwebtoken::errors::Error> {
+    jwk: &Jwk,
+    expected_alg: JtAlgorithm,
+) -> Result<serde_json::Value, JtError> {
     // Build a jsonwebtoken::Jwk from our JWK fields
-    let jt_jwk = jsonwebtoken::jwk::Jwk {
-        common: jsonwebtoken::jwk::CommonParameters {
-            public_key_use: Some(jsonwebtoken::jwk::PublicKeyUse::Signature),
+    let jt_jwk = JtJwk {
+        common: CommonParameters {
+            public_key_use: Some(PublicKeyUse::Signature),
             key_id: Some(jwk.kid.clone()),
             key_algorithm: None,
             ..Default::default()
         },
-        algorithm: jsonwebtoken::jwk::AlgorithmParameters::EllipticCurve(
-            jsonwebtoken::jwk::EllipticCurveKeyParameters {
-                key_type: jsonwebtoken::jwk::EllipticCurveKeyType::EC,
-                curve: match jwk.crv.as_str() {
-                    "P-256" => jsonwebtoken::jwk::EllipticCurve::P256,
-                    "P-384" => jsonwebtoken::jwk::EllipticCurve::P384,
-                    _ => unreachable!(),
-                },
-                x: jwk.x.clone(),
-                y: jwk.y.clone(),
+        algorithm: AlgorithmParameters::EllipticCurve(EllipticCurveKeyParameters {
+            key_type: EllipticCurveKeyType::EC,
+            curve: match jwk.crv.as_str() {
+                "P-256" => EllipticCurve::P256,
+                "P-384" => EllipticCurve::P384,
+                _ => unreachable!(),
             },
-        ),
+            x: jwk.x.clone(),
+            y: jwk.y.clone(),
+        }),
     };
 
-    let decoding_key = jsonwebtoken::DecodingKey::from_jwk(&jt_jwk)?;
+    let decoding_key = DecodingKey::from_jwk(&jt_jwk)?;
 
-    let mut validation = jsonwebtoken::Validation::new(expected_alg);
+    let mut validation = Validation::new(expected_alg);
     validation.validate_aud = false; // we validate separately
     validation.required_spec_claims.clear();
 
-    jsonwebtoken::decode::<serde_json::Value>(token, &decoding_key, &validation)
-        .map(|data| data.claims)
+    decode::<serde_json::Value>(token, &decoding_key, &validation).map(|data| data.claims)
 }
 
 fn arbitrary_kek() -> impl Strategy<Value = Vec<u8>> {
-    proptest::collection::vec(any::<u8>(), 32..=32)
+    collection::vec(any::<u8>(), 32..=32)
 }
 
 fn arbitrary_plaintext() -> impl Strategy<Value = Vec<u8>> {
-    proptest::collection::vec(any::<u8>(), 1..1024)
+    collection::vec(any::<u8>(), 1..1024)
 }
 
 proptest! {
@@ -173,7 +179,7 @@ proptest! {
         let verified = verify_with_jsonwebtoken(
             &encoded.token,
             &kp.public_jwk,
-            jsonwebtoken::Algorithm::ES256,
+            JtAlgorithm::ES256,
         ).unwrap();
 
         prop_assert_eq!(verified["sub"].as_str(), Some(sub.as_str()));
@@ -205,7 +211,7 @@ proptest! {
         let verified = verify_with_jsonwebtoken(
             &encoded.token,
             &kp.public_jwk,
-            jsonwebtoken::Algorithm::ES384,
+            JtAlgorithm::ES384,
         ).unwrap();
 
         prop_assert_eq!(verified["sub"].as_str(), Some(sub.as_str()));

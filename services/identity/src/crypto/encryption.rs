@@ -1,4 +1,5 @@
 use aws_lc_rs::aead::{AES_256_GCM, Aad, LessSafeKey, NONCE_LEN, Nonce, UnboundKey};
+use aws_lc_rs::rand;
 
 use crate::crypto::CryptoError;
 
@@ -64,7 +65,7 @@ pub fn encrypt_private_key(
     let key = LessSafeKey::new(unbound_key);
 
     let mut nonce_bytes = [0u8; NONCE_LEN];
-    aws_lc_rs::rand::fill(&mut nonce_bytes).map_err(|_| CryptoError::Encryption)?;
+    rand::fill(&mut nonce_bytes).map_err(|_| CryptoError::Encryption)?;
 
     let nonce = Nonce::assume_unique_for_key(nonce_bytes);
 
@@ -120,7 +121,7 @@ mod tests {
 
     fn random_kek() -> Vec<u8> {
         let mut kek = vec![0u8; KEK_LEN];
-        aws_lc_rs::rand::fill(&mut kek).unwrap();
+        rand::fill(&mut kek).unwrap();
         kek
     }
 
