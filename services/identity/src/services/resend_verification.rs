@@ -37,6 +37,10 @@ pub enum ResendVerificationError {
 ///
 /// Returns OK even if the email doesn't exist (prevents user enumeration).
 /// Only returns errors for rate limiting.
+///
+/// # Errors
+///
+/// Returns `ResendVerificationError` on rate limiting or internal failures.
 #[tracing::instrument(skip(pool, web_base_url))]
 pub async fn execute(
     pool: &Pool,
@@ -46,9 +50,8 @@ pub async fn execute(
     let mut client = pool.get().await?;
 
     // Look up user — if not found, return Ok (prevent enumeration)
-    let user = match super::get_user_by_email(&client, email).await {
-        Ok(Some(u)) => u,
-        Ok(None) | Err(_) => return Ok(()),
+    let Ok(Some(user)) = super::get_user_by_email(&client, email).await else {
+        return Ok(());
     };
 
     // Only resend for pending_verification users

@@ -22,23 +22,23 @@ fn bench_verify_password(bencher: divan::Bencher) {
 }
 
 #[divan::bench(args = [Algorithm::ES256, Algorithm::ES384])]
-fn bench_sign_jwt(bencher: divan::Bencher, alg: &Algorithm) {
-    let kp = generate_key_pair(*alg).unwrap();
-    let key_pair = key_pair_from_pkcs8(*alg, kp.private_key_pkcs8.as_bytes()).unwrap();
+fn bench_sign_jwt(bencher: divan::Bencher, alg: Algorithm) {
+    let kp = generate_key_pair(alg).unwrap();
+    let key_pair = key_pair_from_pkcs8(alg, kp.private_key_pkcs8.as_bytes()).unwrap();
     let claims = sample_claims();
 
-    bencher.bench(|| sign_jwt(*alg, &kp.kid, divan::black_box(&claims), &key_pair));
+    bencher.bench(|| sign_jwt(alg, &kp.kid, divan::black_box(&claims), &key_pair));
 }
 
 #[divan::bench(args = [Algorithm::ES256, Algorithm::ES384])]
-fn bench_verify_jwt(bencher: divan::Bencher, alg: &Algorithm) {
-    let kp = generate_key_pair(*alg).unwrap();
-    let key_pair = key_pair_from_pkcs8(*alg, kp.private_key_pkcs8.as_bytes()).unwrap();
+fn bench_verify_jwt(bencher: divan::Bencher, alg: Algorithm) {
+    let kp = generate_key_pair(alg).unwrap();
+    let key_pair = key_pair_from_pkcs8(alg, kp.private_key_pkcs8.as_bytes()).unwrap();
     let claims = sample_claims();
-    let encoded = sign_jwt(*alg, &kp.kid, &claims, &key_pair).unwrap();
+    let encoded = sign_jwt(alg, &kp.kid, &claims, &key_pair).unwrap();
 
     let options = VerificationOptions {
-        allowed_algorithms: &[*alg],
+        allowed_algorithms: &[alg],
         issuer: Some("https://home.ryanseipp.com"),
         audience: Some("https://api.home.ryanseipp.com"),
         current_time: now_secs(),
@@ -49,8 +49,8 @@ fn bench_verify_jwt(bencher: divan::Bencher, alg: &Algorithm) {
 }
 
 #[divan::bench(args = [Algorithm::ES256, Algorithm::ES384])]
-fn bench_generate_key_pair(bencher: divan::Bencher, alg: &Algorithm) {
-    bencher.bench(|| generate_key_pair(*alg));
+fn bench_generate_key_pair(bencher: divan::Bencher, alg: Algorithm) {
+    bencher.bench(|| generate_key_pair(alg));
 }
 
 #[divan::bench]

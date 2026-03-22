@@ -6,10 +6,11 @@ use std::net::SocketAddr;
 use std::sync::Arc;
 
 use deadpool_postgres::Pool;
-use gateway::config::{AppConfig, IdentityConfig as GatewayIdentityConfig};
+use gateway::config::{AppConfig, IdentityConfig as GatewayIdentityConfig, ScyllaConfig};
 use gateway::pool::IdentityChannel;
 use gateway::routes::AppState;
 use gateway::server::run as run_gateway;
+use gateway::session::SessionStore;
 use identity::config::{AppConfig as IdentityConfig, DbConfig, KafkaConfig};
 use identity::crypto::kek::Kek;
 use identity::db::DatabasePool;
@@ -18,10 +19,9 @@ use identity::services::ensure_signing_key;
 use rustls::crypto::aws_lc_rs::default_provider;
 use rustls::pki_types::ServerName;
 use spiffe_rustls::authorizer;
+use test_utils::{ContainerAsync, Postgres, ScyllaDB};
 
 use aws_lc_rs::rand;
-use testcontainers_modules::postgres::Postgres;
-use testcontainers_modules::testcontainers::ContainerAsync;
 use tokio::net::TcpListener;
 use tokio::task;
 
@@ -63,8 +63,12 @@ async fn start_identity_server(pool: Pool, server_tls: Arc<rustls::ServerConfig>
 }
 
 /// Start the gateway HTTP server (plain HTTP externally) with a SPIFFE mTLS
-/// connection pool to the identity backend.
-async fn start_gateway_server(source: spiffe::X509Source, identity_addr: SocketAddr) -> SocketAddr {
+/// connection pool to the identity backend and a ScyllaDB session store.
+async fn start_gateway_server(
+    source: spiffe::X509Source,
+    identity_addr: SocketAddr,
+    sessions: Arc<SessionStore>,
+) -> SocketAddr {
     let identity = Arc::new(
         IdentityChannel::new(
             format!("https://[::1]:{}", identity_addr.port()),
@@ -75,7 +79,7 @@ async fn start_gateway_server(source: spiffe::X509Source, identity_addr: SocketA
         .unwrap(),
     );
 
-    let state = AppState { identity };
+    let state = AppState { identity, sessions };
 
     let listener = TcpListener::bind("[::1]:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
@@ -84,6 +88,7 @@ async fn start_gateway_server(source: spiffe::X509Source, identity_addr: SocketA
         tls_cert_file: "/nonexistent/tls.crt".into(),
         tls_key_file: "/nonexistent/tls.key".into(),
         identity: GatewayIdentityConfig::default(),
+        scylla: ScyllaConfig::default(),
     };
 
     tokio::spawn(async move {
@@ -98,6 +103,7 @@ struct TestEnv {
     gateway_addr: SocketAddr,
     _spire: spire_fixture::SpireTestCluster,
     _db_container: ContainerAsync<Postgres>,
+    _scylla_container: ContainerAsync<ScyllaDB>,
 }
 
 impl TestEnv {
@@ -107,6 +113,7 @@ impl TestEnv {
 
         let spire = spire_fixture::start().await;
         let (db_container, pool) = test_utils::test_db_pool().await;
+        let (scylla_container, sessions) = test_utils::test_scylla_store().await;
 
         let identity_source = spire
             .x509_source("spiffe://home.ryanseipp.com/identity")
@@ -121,12 +128,13 @@ impl TestEnv {
         let gateway_source = spire
             .x509_source("spiffe://home.ryanseipp.com/gateway")
             .await;
-        let gateway_addr = start_gateway_server(gateway_source, identity_addr).await;
+        let gateway_addr = start_gateway_server(gateway_source, identity_addr, sessions).await;
 
         TestEnv {
             gateway_addr,
             _spire: spire,
             _db_container: db_container,
+            _scylla_container: scylla_container,
         }
     }
 
@@ -134,6 +142,10 @@ impl TestEnv {
         format!("http://[::1]:{}{path}", self.gateway_addr.port())
     }
 }
+
+// ---------------------------------------------------------------------------
+// Existing tests
+// ---------------------------------------------------------------------------
 
 #[tokio::test]
 async fn sign_up_through_gateway() {
@@ -200,4 +212,110 @@ async fn verify_email_invalid_token_returns_not_found() {
         .unwrap();
 
     assert_eq!(resp.status(), 404);
+}
+
+// ---------------------------------------------------------------------------
+// Auth session tests
+// ---------------------------------------------------------------------------
+
+#[tokio::test]
+async fn unauthenticated_userinfo_returns_401() {
+    let env = TestEnv::start().await;
+
+    let resp = reqwest::Client::new()
+        .get(env.url("/api/v1/userinfo"))
+        .send()
+        .await
+        .unwrap();
+
+    assert_eq!(resp.status(), 401);
+}
+
+#[tokio::test]
+async fn unauthenticated_profile_returns_401() {
+    let env = TestEnv::start().await;
+
+    let resp = reqwest::Client::new()
+        .patch(env.url("/api/v1/profile"))
+        .json(&serde_json::json!({"given_name": "New"}))
+        .send()
+        .await
+        .unwrap();
+
+    assert_eq!(resp.status(), 401);
+}
+
+#[tokio::test]
+async fn unauthenticated_update_password_returns_401() {
+    let env = TestEnv::start().await;
+
+    let resp = reqwest::Client::new()
+        .post(env.url("/api/v1/update-password"))
+        .json(&serde_json::json!({
+            "current_password": "old",
+            "new_password": "new"
+        }))
+        .send()
+        .await
+        .unwrap();
+
+    assert_eq!(resp.status(), 401);
+}
+
+#[tokio::test]
+async fn unauthenticated_logout_returns_401() {
+    let env = TestEnv::start().await;
+
+    let resp = reqwest::Client::new()
+        .post(env.url("/api/v1/logout"))
+        .send()
+        .await
+        .unwrap();
+
+    assert_eq!(resp.status(), 401);
+}
+
+#[tokio::test]
+async fn resend_verification_no_auth_required() {
+    let env = TestEnv::start().await;
+
+    // Should return 204 regardless of whether the email exists (prevents enumeration)
+    let resp = reqwest::Client::new()
+        .post(env.url("/api/v1/resend-verification"))
+        .json(&serde_json::json!({"email": "nobody@example.com"}))
+        .send()
+        .await
+        .unwrap();
+
+    assert_eq!(resp.status(), 204);
+}
+
+#[tokio::test]
+async fn invalid_session_cookie_returns_401() {
+    let env = TestEnv::start().await;
+
+    let resp = reqwest::Client::new()
+        .get(env.url("/api/v1/userinfo"))
+        .header("Cookie", "__Host-sid=not-valid-base64url")
+        .send()
+        .await
+        .unwrap();
+
+    assert_eq!(resp.status(), 401);
+}
+
+#[tokio::test]
+async fn unknown_session_token_returns_401() {
+    let env = TestEnv::start().await;
+
+    // Valid base64url token (32 random bytes) that doesn't correspond to any session.
+    let fake_token = base64ct::Base64UrlUnpadded::encode_string(&[0xAB; 32]);
+    let resp = reqwest::Client::new()
+        .get(env.url("/api/v1/userinfo"))
+        .header("Cookie", format!("__Host-sid={fake_token}"))
+        .send()
+        .await
+        .unwrap();
+
+    assert_eq!(resp.status(), 401);
 }

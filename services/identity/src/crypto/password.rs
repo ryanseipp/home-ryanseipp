@@ -28,6 +28,10 @@ pub enum PasswordError {
 /// - FIPS: PBKDF2-HMAC-SHA-256 (600,000 iterations) per NIST SP 800-132.
 ///
 /// Returns a PHC-format string that embeds algorithm, parameters, salt, and hash.
+///
+/// # Errors
+///
+/// Returns `PasswordError::HashingFailed` if the underlying algorithm fails.
 pub fn hash_password(password: &str) -> Result<String, PasswordError> {
     let salt = SaltString::generate(&mut OsRng);
 
@@ -60,6 +64,10 @@ pub fn hash_password(password: &str) -> Result<String, PasswordError> {
 /// Verify a password against a PHC-format hash string.
 ///
 /// Automatically detects the algorithm from the hash string (Argon2id or PBKDF2).
+///
+/// # Errors
+///
+/// Returns `PasswordError` if the hash format is invalid or the password does not match.
 pub fn verify_password(password: &str, phc_hash: &str) -> Result<(), PasswordError> {
     let parsed = PasswordHash::new(phc_hash).map_err(|_| PasswordError::InvalidFormat)?;
 

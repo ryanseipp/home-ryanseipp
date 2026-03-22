@@ -1,6 +1,7 @@
 pub mod auth;
 pub mod error;
 pub mod health;
+pub mod session;
 
 use std::sync::Arc;
 
@@ -8,11 +9,13 @@ use axum::Router;
 use tower_http::trace::TraceLayer;
 
 use crate::pool::IdentityChannel;
+use crate::session::SessionStore;
 
 /// Shared application state available to route handlers.
 #[derive(Clone)]
 pub struct AppState {
     pub identity: Arc<IdentityChannel>,
+    pub sessions: Arc<SessionStore>,
 }
 
 /// Build the application router with all routes and middleware.

@@ -23,11 +23,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let spiffe = SpiffeContext::new(config.spiffe_endpoint_socket.as_deref()).await?;
 
-    let db = DatabasePool::connect(
-        &config.db,
-        config.db_read.as_ref(),
-        spiffe.client_tls.clone(),
-    )?;
+    let db = DatabasePool::connect(&config.db, config.db_read.as_ref(), &spiffe.client_tls)?;
     db.migrate().await?;
     tracing::info!("database migrations applied");
 

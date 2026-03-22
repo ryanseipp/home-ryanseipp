@@ -81,14 +81,14 @@ impl Default for KafkaConfig {
 /// Environment variables: `IDENTITY__DB__HOST`, `IDENTITY__DB__PORT`, etc.
 ///
 /// TLS cert material (CA cert, client cert, client key) is provided at runtime
-/// from the SPIFFE X509Source rather than file paths. When no SPIFFE source is
+/// from the SPIFFE `X509Source` rather than file paths. When no SPIFFE source is
 /// available (dev/test), connections fall back to `PgSslMode::Prefer`.
 #[derive(Debug, Deserialize)]
 pub struct DbConfig {
-    /// PostgreSQL host.
+    /// `PostgreSQL` host.
     pub host: String,
 
-    /// PostgreSQL port. Default: `5432`
+    /// `PostgreSQL` port. Default: `5432`
     #[serde(default = "default_db_port")]
     pub port: u16,
 
@@ -142,6 +142,10 @@ impl AppConfig {
     ///
     /// Uses `__` as the separator for nested configuration
     /// (e.g., `IDENTITY__DB__HOST`).
+    ///
+    /// # Errors
+    ///
+    /// Returns `ConfigError` if required variables are missing or values cannot be deserialized.
     pub fn load() -> Result<Self, ConfigError> {
         let cfg = config::Config::builder()
             .set_default("listen_addr", DEFAULT_LISTEN_ADDR)?

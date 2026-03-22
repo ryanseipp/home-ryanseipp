@@ -16,7 +16,7 @@ use jsonwebtoken::jwk::{
 use jsonwebtoken::{DecodingKey, Validation, decode};
 
 /// Verify a JWT produced by our implementation using the `jsonwebtoken` crate
-/// (RustCrypto backend) — a completely independent crypto stack.
+/// (`RustCrypto` backend) — a completely independent crypto stack.
 ///
 /// This confirms our JWTs and JWKs are standards-compliant and interoperable.
 fn verify_with_jsonwebtoken(

@@ -10,8 +10,8 @@ fips = ["aws-lc-rs/fips", "rustls/fips"]
 db-tests = []
 
 [dependencies]
-argon2 = { version = "0.5", optional = true, default-features = false, features = ["std", "password-hash"] }
-chrono = { version = "0.4", default-features = false, features = ["serde"] }
+argon2 = { workspace = true, optional = true }
+chrono.workspace = true
 aws-lc-rs.workspace = true
 base64ct.workspace = true
 config.workspace = true
@@ -19,11 +19,11 @@ json-subscriber.workspace = true
 opentelemetry.workspace = true
 opentelemetry_sdk.workspace = true
 opentelemetry-otlp.workspace = true
-password-hash = { version = "0.5", features = ["rand_core"] }
+password-hash.workspace = true
 prost.workspace = true
 prost-types.workspace = true
 rskafka.workspace = true
-rustls = { workspace = true, features = ["aws_lc_rs"] }
+rustls.workspace = true
 serde.workspace = true
 spiffe.workspace = true
 spiffe-rustls.workspace = true
@@ -36,7 +36,7 @@ thiserror.workspace = true
 tokio.workspace = true
 tonic-tls.workspace = true
 tokio-util.workspace = true
-tonic = { workspace = true, features = ["transport"] }
+tonic.workspace = true
 tonic-prost.workspace = true
 tracing.workspace = true
 tracing-opentelemetry.workspace = true
@@ -45,15 +45,14 @@ uuid.workspace = true
 zeroize.workspace = true
 
 [dev-dependencies]
-jsonwebtoken = { version = "10.3", default-features = false, features = ["rust_crypto"] }
-proptest = "1"
+jsonwebtoken.workspace = true
+proptest.workspace = true
 divan.workspace = true
-temp-env = "0.3"
+temp-env.workspace = true
 rcgen.workspace = true
-tempfile = "3"
+tempfile.workspace = true
 test-utils = { path = "../test-utils" }
-testcontainers-modules = { version = "0.15", features = ["postgres"] }
-tonic = { workspace = true, features = ["transport", "channel"] }
+tonic.workspace = true
 
 [[bench]]
 name = "crypto"

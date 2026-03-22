@@ -53,6 +53,19 @@ services:
     volumes:
       - grafana:/data
 
+  scylla:
+    image: scylladb/scylla:2026.1.0
+    ports:
+      - "9042:9042"
+    command: --smp 1 --memory 512M --overprovisioned 1
+    volumes:
+      - scylla-data:/var/lib/scylla
+    healthcheck:
+      test: ["CMD", "cqlsh", "-e", "DESCRIBE KEYSPACES"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
   spire-server:
     image: ghcr.io/spiffe/spire-server:1.12.0
     command: ["-config", "/opt/spire/conf/server.conf"]
@@ -87,5 +100,6 @@ volumes:
   pgdata:
   kafka-data:
   grafana:
+  scylla-data:
   spire-data:
   spire-socket:

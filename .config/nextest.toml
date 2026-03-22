@@ -3,3 +3,12 @@ fail-fast = false
 
 [profile.ci]
 fail-fast = true
+
+# Integration tests spin up shared containers (SPIRE, Postgres, ScyllaDB)
+# per process. Limit parallelism to avoid resource contention.
+[test-groups.e2e]
+max-threads = 4
+
+[[profile.default.overrides]]
+filter = "test(auth_e2e)"
+test-group = "e2e"

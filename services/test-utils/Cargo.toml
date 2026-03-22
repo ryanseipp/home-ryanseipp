@@ -10,18 +10,20 @@ workspace = true
 # Database
 deadpool-postgres.workspace = true
 identity = { path = "../identity" }
+gateway = { path = "../gateway" }
 
 # Testcontainers
 testcontainers.workspace = true
-testcontainers-modules = { version = "0.15", features = ["postgres"] }
+testcontainers-modules.workspace = true
 
 # SPIFFE
 spiffe.workspace = true
 
 # Async
-tokio = { workspace = true, features = ["time"] }
+tokio.workspace = true
 
 # Misc
 serde_json.workspace = true
-tempfile = "3"
+tempfile.workspace = true
+tracing.workspace = true
 tracing-subscriber.workspace = true

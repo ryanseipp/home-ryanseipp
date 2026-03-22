@@ -1,6 +1,6 @@
 use std::net::SocketAddr;
 
-use gateway::config::{AppConfig, IdentityConfig};
+use gateway::config::{AppConfig, IdentityConfig, ScyllaConfig};
 use gateway::server::run;
 use tokio::net::TcpListener;
 use tokio::task;
@@ -11,6 +11,7 @@ fn test_config(addr: SocketAddr) -> AppConfig {
         tls_cert_file: "/nonexistent/tls.crt".into(),
         tls_key_file: "/nonexistent/tls.key".into(),
         identity: IdentityConfig::default(),
+        scylla: ScyllaConfig::default(),
     }
 }
 
@@ -79,6 +80,7 @@ async fn server_accepts_tls_connections() {
         tls_cert_file: cert_path.to_str().unwrap().into(),
         tls_key_file: key_path.to_str().unwrap().into(),
         identity: IdentityConfig::default(),
+        scylla: ScyllaConfig::default(),
     };
 
     tokio::spawn(async move {

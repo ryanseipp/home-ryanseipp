@@ -13,7 +13,7 @@ pub enum SpiffeError {
     Tls(#[from] spiffe_rustls::Error),
 }
 
-/// Centralised SPIFFE context: holds the X509Source and pre-built TLS configs.
+/// Centralised SPIFFE context: holds the `X509Source` and pre-built TLS configs.
 ///
 /// Both `server_tls` and `client_tls` use `spiffe_rustls` dynamic cert
 /// resolvers, so SVID rotation is handled automatically — no need to rebuild
@@ -30,8 +30,12 @@ impl SpiffeContext {
     /// `endpoint` overrides the default `SPIFFE_ENDPOINT_SOCKET` env var.
     ///
     /// The returned `client_tls` config can be used for ALL outbound mTLS
-    /// connections (gRPC, Kafka, PostgreSQL) — the dynamic cert resolver
+    /// connections (gRPC, Kafka, `PostgreSQL`) — the dynamic cert resolver
     /// ensures fresh SVID material on every TLS handshake.
+    ///
+    /// # Errors
+    ///
+    /// Returns `SpiffeError` if the Workload API connection or TLS config build fails.
     pub async fn new(endpoint: Option<&str>) -> Result<Self, SpiffeError> {
         let endpoint = endpoint
             .map(String::from)

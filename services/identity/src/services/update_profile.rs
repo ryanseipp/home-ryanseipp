@@ -21,6 +21,11 @@ pub enum UpdateProfileError {
     UsernameTaken,
 }
 
+/// Update a user's profile fields.
+///
+/// # Errors
+///
+/// Returns `UpdateProfileError` if no fields are provided, validation fails, or a database error occurs.
 #[tracing::instrument(skip(pool))]
 pub async fn execute(
     pool: &Pool,

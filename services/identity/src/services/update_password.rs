@@ -35,6 +35,11 @@ pub enum UpdatePasswordError {
     InvalidNewPassword(&'static str),
 }
 
+/// Update a user's password after verifying the current one.
+///
+/// # Errors
+///
+/// Returns `UpdatePasswordError` if the current password is wrong, the new password is invalid, or a database error occurs.
 #[tracing::instrument(skip(pool, current_password, new_password))]
 pub async fn execute(
     pool: &Pool,

@@ -9,6 +9,10 @@ use super::CryptoError;
 /// Returns `(cleartext_base64url, sha256_hash_bytes)` where:
 /// - `cleartext_base64url` is 32 random bytes encoded as base64url (sent to the user)
 /// - `sha256_hash_bytes` is the SHA-256 hash of the raw bytes (stored in DB)
+///
+/// # Errors
+///
+/// Returns `CryptoError::RngFailure` if the system RNG fails.
 pub fn generate_verification_token() -> Result<(String, Vec<u8>), CryptoError> {
     let mut raw_token = [0u8; 32];
     rand::fill(&mut raw_token).map_err(|_| CryptoError::RngFailure)?;

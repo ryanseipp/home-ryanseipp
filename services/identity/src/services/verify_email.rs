@@ -32,6 +32,10 @@ pub enum VerifyEmailError {
 /// 2. Look up the token by hash
 /// 3. Check expiry
 /// 4. Transaction: consume token + mark user email verified + set status active
+///
+/// # Errors
+///
+/// Returns `VerifyEmailError` if the token is invalid, expired, already consumed, or the user is not found.
 #[tracing::instrument(skip(pool, raw_token))]
 pub async fn execute(pool: &Pool, raw_token: &str) -> Result<(), VerifyEmailError> {
     // Decode base64url token and hash it

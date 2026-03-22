@@ -2,7 +2,7 @@ use std::net::SocketAddr;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 
-use gateway::config::{AppConfig, IdentityConfig as GatewayIdentityConfig};
+use gateway::config::{AppConfig, IdentityConfig as GatewayIdentityConfig, ScyllaConfig};
 use gateway::pool::IdentityChannel;
 use gateway::routes::AppState;
 use gateway::server::run as run_gateway;
@@ -14,16 +14,15 @@ use identity::services::ensure_signing_key;
 use rustls::crypto::aws_lc_rs::default_provider;
 use rustls::pki_types::ServerName;
 use spiffe_rustls::authorizer;
-use test_utils::{SpireTestCluster, SpireWorkloadEntry};
-use testcontainers_modules::postgres::Postgres;
-use testcontainers_modules::testcontainers::ContainerAsync;
+use test_utils::{ContainerAsync, Postgres, ScyllaDB, SpireTestCluster};
 use tokio::net::TcpListener;
 use tokio::runtime::Runtime;
 use tokio::task;
 
 struct BenchEnv {
-    spire: Option<SpireTestCluster>,
-    db_container: Option<ContainerAsync<Postgres>>,
+    _spire: Option<SpireTestCluster>,
+    _db_container: Option<ContainerAsync<Postgres>>,
+    _scylla_container: Option<ContainerAsync<ScyllaDB>>,
     rt: Runtime,
     gateway_addr: SocketAddr,
     client: reqwest::Client,
@@ -31,9 +30,11 @@ struct BenchEnv {
 
 impl Drop for BenchEnv {
     fn drop(&mut self) {
-        let db = self.db_container.take();
-        let spire = self.spire.take();
+        let scylla = self._scylla_container.take();
+        let db = self._db_container.take();
+        let spire = self._spire.take();
         self.rt.block_on(async move {
+            drop(scylla);
             drop(db);
             drop(spire);
         });
@@ -81,7 +82,11 @@ async fn start_identity_server(
     addr
 }
 
-async fn start_gateway_server(source: spiffe::X509Source, identity_addr: SocketAddr) -> SocketAddr {
+async fn start_gateway_server(
+    source: spiffe::X509Source,
+    identity_addr: SocketAddr,
+    sessions: Arc<gateway::session::SessionStore>,
+) -> SocketAddr {
     let identity = Arc::new(
         IdentityChannel::new(
             format!("https://[::1]:{}", identity_addr.port()),
@@ -92,7 +97,7 @@ async fn start_gateway_server(source: spiffe::X509Source, identity_addr: SocketA
         .unwrap(),
     );
 
-    let state = AppState { identity };
+    let state = AppState { identity, sessions };
 
     let listener = TcpListener::bind("[::1]:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
@@ -101,6 +106,7 @@ async fn start_gateway_server(source: spiffe::X509Source, identity_addr: SocketA
         tls_cert_file: "/nonexistent/tls.crt".into(),
         tls_key_file: "/nonexistent/tls.key".into(),
         identity: GatewayIdentityConfig::default(),
+        scylla: ScyllaConfig::default(),
     };
 
     tokio::spawn(async move {
@@ -116,13 +122,13 @@ fn start_env() -> BenchEnv {
     test_utils::init_tracing();
 
     let rt = Runtime::new().unwrap();
-    let (gateway_addr, spire, db_container) = rt.block_on(async {
-        let spire = SpireTestCluster::start(&[
-            SpireWorkloadEntry {
+    let (gateway_addr, spire, db_container, scylla_container) = rt.block_on(async {
+        let spire = test_utils::SpireTestCluster::start(&[
+            test_utils::SpireWorkloadEntry {
                 spiffe_id: "spiffe://home.ryanseipp.com/gateway".into(),
                 dns: "gateway".into(),
             },
-            SpireWorkloadEntry {
+            test_utils::SpireWorkloadEntry {
                 spiffe_id: "spiffe://home.ryanseipp.com/identity".into(),
                 dns: "identity".into(),
             },
@@ -130,6 +136,7 @@ fn start_env() -> BenchEnv {
         .await;
 
         let (db_container, pool) = test_utils::test_db_pool().await;
+        let (scylla_container, sessions) = test_utils::test_scylla_store().await;
 
         let identity_source = spire
             .x509_source("spiffe://home.ryanseipp.com/identity")
@@ -144,14 +151,15 @@ fn start_env() -> BenchEnv {
         let gateway_source = spire
             .x509_source("spiffe://home.ryanseipp.com/gateway")
             .await;
-        let gateway_addr = start_gateway_server(gateway_source, identity_addr).await;
+        let gateway_addr = start_gateway_server(gateway_source, identity_addr, sessions).await;
 
-        (gateway_addr, spire, db_container)
+        (gateway_addr, spire, db_container, scylla_container)
     });
 
     BenchEnv {
-        spire: Some(spire),
-        db_container: Some(db_container),
+        _spire: Some(spire),
+        _db_container: Some(db_container),
+        _scylla_container: Some(scylla_container),
         rt,
         gateway_addr,
         client: reqwest::Client::new(),

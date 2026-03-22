@@ -11,6 +11,9 @@ const DEFAULT_TLS_KEY_FILE: &str = "/var/run/secrets/tls/tls.key";
 
 const DEFAULT_IDENTITY_ADDR: &str = "http://[::1]:50051";
 
+const DEFAULT_SCYLLA_CONTACT_POINT: &str = "[::1]:9042";
+const DEFAULT_SCYLLA_KEYSPACE: &str = "gateway";
+
 /// Server configuration loaded entirely from environment variables.
 ///
 /// All variables use the `GATEWAY_` prefix (e.g., `GATEWAY_LISTEN_ADDR`).
@@ -36,6 +39,10 @@ pub struct AppConfig {
     /// Identity gRPC backend configuration.
     #[serde(default)]
     pub identity: IdentityConfig,
+
+    /// `ScyllaDB` session store configuration.
+    #[serde(default)]
+    pub scylla: ScyllaConfig,
 }
 
 /// Configuration for connecting to the Identity gRPC service.
@@ -55,6 +62,40 @@ impl Default for IdentityConfig {
             addr: default_identity_addr(),
         }
     }
+}
+
+/// Configuration for connecting to `ScyllaDB`.
+///
+/// Environment variables: `GATEWAY__SCYLLA__CONTACT_POINTS`,
+/// `GATEWAY__SCYLLA__KEYSPACE`.
+#[derive(Debug, Deserialize)]
+pub struct ScyllaConfig {
+    /// `ScyllaDB` contact points (host:port).
+    /// Default: `["[::1]:9042"]`
+    #[serde(default = "default_scylla_contact_points")]
+    pub contact_points: Vec<String>,
+
+    /// `ScyllaDB` keyspace for session storage.
+    /// Default: `"gateway"`
+    #[serde(default = "default_scylla_keyspace")]
+    pub keyspace: String,
+}
+
+impl Default for ScyllaConfig {
+    fn default() -> Self {
+        Self {
+            contact_points: default_scylla_contact_points(),
+            keyspace: default_scylla_keyspace(),
+        }
+    }
+}
+
+fn default_scylla_contact_points() -> Vec<String> {
+    vec![DEFAULT_SCYLLA_CONTACT_POINT.into()]
+}
+
+fn default_scylla_keyspace() -> String {
+    DEFAULT_SCYLLA_KEYSPACE.into()
 }
 
 fn default_listen_addr() -> SocketAddr {
@@ -80,6 +121,11 @@ impl AppConfig {
     ///
     /// Uses `__` as the separator for nested configuration
     /// (e.g., `GATEWAY__IDENTITY__ADDR`).
+    ///
+    /// # Errors
+    ///
+    /// Returns `ConfigError` if environment variables cannot be parsed or
+    /// deserialized into the configuration struct.
     pub fn load() -> Result<Self, ConfigError> {
         let cfg = config::Config::builder()
             .set_default("listen_addr", DEFAULT_LISTEN_ADDR)?
@@ -97,6 +143,7 @@ impl AppConfig {
     /// is enabled by the *presence* of the files, not by the config values.
     /// This lets cert-manager and external-secrets inject certs without any
     /// config changes — mount them at the default paths and TLS activates.
+    #[must_use]
     pub fn tls_available(&self) -> bool {
         std::path::Path::new(&self.tls_cert_file).exists()
             && std::path::Path::new(&self.tls_key_file).exists()

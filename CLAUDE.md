@@ -41,7 +41,8 @@ cargo nextest run -p identity --features db-tests        # Unit + integration te
 ```
 
 This runs all tests (unit + integration) in a single compilation pass with
-coverage. Requires `docker compose up -d postgres` for integration tests.
+coverage. Requires `docker compose up -d postgres scylla` for integration tests
+(postgres for identity, scylla for gateway sessions).
 
 **SQLx Offline Cache** (after adding/changing SQL queries):
 
@@ -161,6 +162,9 @@ images.
   API Gateway aggregates; services publish to Kafka rather than calling each
   other directly.
 - **Security**: mTLS for inter-service, secrets via environment or filesystem.
+- **Session storage**: Gateway uses ScyllaDB for session storage (session
+  cookies → JWT pass-through to microservices). Config via `GATEWAY__SCYLLA__*`
+  env vars.
 
 ### Key Paths
 

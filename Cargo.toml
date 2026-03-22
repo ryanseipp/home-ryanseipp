@@ -13,71 +13,90 @@ warnings = "deny"
 
 [workspace.lints.clippy]
 all = { level = "deny", priority = -1 }
+pedantic = { level = "deny", priority = -1 }
 absolute_paths = { level = "deny", priority = 1 }
 
 [workspace.dependencies]
 async-trait = "0.1.89"
-aws-lc-rs = "1.16.1"
-base64ct = { version = "1.8.3", features = ["alloc"] }
-prost = "0.14.3"
-prost-types = "0.14.3"
-serde = { version = "1.0.228", features = ["derive"] }
-serde_json = "1.0.149"
-thiserror = "2.0.18"
-tokio = { version = "1.50.0", features = ["full"] }
-tonic = "0.14.5"
+aws-lc-rs = { version = "1.16.2", default-features = false, features = ["aws-lc-sys", "alloc"] }
+base64ct = { version = "1.8.3", default-features = false, features = ["alloc"] }
+prost = { version = "0.14.3", default-features = false, features = ["std", "derive"] }
+prost-types = { version = "0.14.3", default-features = false, features = ["std"] }
+serde = { version = "1.0.228", default-features = false, features = ["std", "derive"] }
+serde_json = { version = "1.0.149", default-features = false, features = ["std"] }
+thiserror = { version = "2.0.18", default-features = false, features = ["std"] }
+tokio = { version = "1.50.0", default-features = false, features = ["full"] }
+tonic = { version = "0.14.5", default-features = false, features = ["transport", "channel", "router"] }
 tonic-prost = "0.14.5"
-tonic-prost-build = "0.14.5"
+tonic-prost-build = { version = "0.14.5", default-features = false, features = ["transport", "cleanup-markdown"] }
 tonic-tls = { version = "0.7.1", default-features = false, features = ["rustls"] }
-uuid = { version = "1.22.0", features = ["v4", "v7"] }
-zeroize = { version = "1.8.2", features = ["derive"] }
+chrono = { version = "0.4.44", default-features = false, features = ["clock", "serde"] }
+
+uuid = { version = "1.22.0", default-features = false, features = ["std", "v4", "v7"] }
+zeroize = { version = "1.8.2", default-features = false, features = ["alloc", "derive"] }
 
 # Configuration
-config = { version = "0.15.19", default-features = false }
+config = { version = "0.15.22", default-features = false }
 
 # Database
-tokio-postgres = { version = "0.7", features = ["with-uuid-1", "with-serde_json-1", "with-chrono-0_4"] }
-deadpool-postgres = "0.14"
-tokio-postgres-rustls = "0.13"
-refinery = { version = "0.9", features = ["tokio-postgres"] }
+tokio-postgres = { version = "0.7.16", default-features = false, features = ["runtime", "with-uuid-1", "with-serde_json-1", "with-chrono-0_4"] }
+deadpool-postgres = { version = "0.14.1", default-features = false, features = ["rt_tokio_1"] }
+tokio-postgres-rustls = "0.13.0"
+refinery = { version = "0.9.0", default-features = false, features = ["tokio-postgres"] }
 
 # Logging
 json-subscriber = { version = "0.2.7", default-features = false, features = ["tracing-opentelemetry-0-32"] }
 
 # TLS
 rcgen = { version = "0.14.7", default-features = false, features = ["aws_lc_rs", "pem"] }
-rustls = { version = "0.23.37", default-features = false }
+rustls = { version = "0.23.37", default-features = false, features = ["aws_lc_rs"] }
 
 # Kafka
 rskafka = { version = "0.6.0", default-features = false, features = ["transport-tls"] }
 
 # SPIFFE / mTLS
-spiffe = { version = "0.12", default-features = false, features = ["x509-source"] }
-spiffe-rustls = { version = "0.4", default-features = false, features = ["aws-lc-rs"] }
+spiffe = { version = "0.12.0", default-features = false, features = ["x509-source"] }
+spiffe-rustls = { version = "0.4.8", default-features = false, features = ["aws-lc-rs"] }
+
+# ScyllaDB
+scylla = { version = "1.5.0", default-features = false, features = ["rustls-023", "chrono-04"] }
 
 # HTTP Framework
-axum = "0.8.8"
-tower = { version = "0.5.3", features = ["util"] }
-tower-http = { version = "0.6.8", features = ["trace", "cors"] }
-hyper = { version = "1.8.1", features = ["server", "http1", "http2"] }
-hyper-util = { version = "0.1.20", features = ["tokio", "server-auto", "http1", "http2"] }
+axum = { version = "0.8.8", default-features = false, features = ["http1", "http2", "json", "matched-path", "original-uri", "query", "tokio", "tracing"] }
+
+tower = { version = "0.5.3", default-features = false, features = ["util"] }
+tower-http = { version = "0.6.8", default-features = false, features = ["trace", "cors"] }
+hyper = { version = "1.8.1", default-features = false, features = ["server", "http1", "http2"] }
+hyper-util = { version = "0.1.20", default-features = false, features = ["tokio", "server-auto", "http1", "http2"] }
 
 # TLS
 tokio-rustls = { version = "0.26.4", default-features = false, features = ["aws-lc-rs"] }
-rustls-pemfile = "2.2.0"
+rustls-pemfile = { version = "2.2.0", default-features = false, features = ["std"] }
 
 # Benchmarking
-divan = "0.1"
+divan = "0.1.21"
 
 # Server
 testcontainers = "0.27"
-tokio-stream = { version = "0.1.18", features = ["net"] }
-tokio-util = { version = "0.7.18", features = ["rt"] }
+tokio-stream = { version = "0.1.18", default-features = false, features = ["net", "time"] }
+tokio-util = { version = "0.7.18", default-features = false, features = ["rt"] }
 
 # Observability
-tracing = "0.1.44"
-tracing-subscriber = { version = "0.3.22", features = ["env-filter"] }
-opentelemetry = "0.31.0"
-opentelemetry_sdk = { version = "0.31.0", features = ["rt-tokio"] }
+tracing = { version = "0.1.44", default-features = false, features = ["std", "attributes"] }
+tracing-subscriber = { version = "0.3.22", default-features = false, features = ["std", "smallvec", "fmt", "ansi", "tracing-log", "env-filter"] }
+opentelemetry = { version = "0.31.0", default-features = false, features = ["trace", "metrics"] }
+opentelemetry_sdk = { version = "0.31.0", default-features = false, features = ["trace", "metrics", "rt-tokio"] }
 opentelemetry-otlp = { version = "0.31.0", default-features = false, features = ["grpc-tonic", "trace", "metrics"] }
-tracing-opentelemetry = "0.32.1"
+tracing-opentelemetry = { version = "0.32.1", default-features = false, features = ["tracing-log", "metrics"] }
+
+# Password hashing
+argon2 = { version = "0.5", default-features = false, features = ["std", "password-hash"] }
+password-hash = { version = "0.5", default-features = false, features = ["rand_core"] }
+
+# Testing
+jsonwebtoken = { version = "10.3", default-features = false, features = ["rust_crypto"] }
+proptest = { version = "1", default-features = false, features = ["std", "fork", "timeout", "bit-set"] }
+reqwest = { version = "0.13", default-features = false, features = ["json", "rustls"] }
+temp-env = "0.3"
+tempfile = "3"
+testcontainers-modules = { version = "0.15", default-features = false, features = ["postgres", "scylladb", "kafka"] }

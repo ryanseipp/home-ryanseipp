@@ -15,6 +15,11 @@ pub enum UserInfoError {
     NotFound,
 }
 
+/// Fetch a user's profile by ID.
+///
+/// # Errors
+///
+/// Returns `UserInfoError` if the user is not found or a database error occurs.
 #[tracing::instrument(skip(pool))]
 pub async fn execute(pool: &Pool, user_id: Uuid) -> Result<User, UserInfoError> {
     let client = pool.get().await?;

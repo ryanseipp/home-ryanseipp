@@ -28,6 +28,10 @@ impl Drop for TelemetryGuard {
 /// - **Metrics**: exported via OTLP gRPC at 60s intervals (configurable via `OTEL_METRIC_EXPORT_INTERVAL`)
 /// - **Logs**: structured JSON to stdout with trace correlation (`traceId`, `spanId`)
 /// - **Filter**: controlled by `RUST_LOG` env var (default: `info`)
+///
+/// # Errors
+///
+/// Returns an error if OTLP exporter or provider initialization fails.
 pub fn init() -> Result<TelemetryGuard, Box<dyn std::error::Error>> {
     // Resource identifying this service. Merges with attributes from
     // OTEL_RESOURCE_ATTRIBUTES (e.g. k8s.pod.name injected by the OTEL operator).

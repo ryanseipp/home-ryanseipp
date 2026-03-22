@@ -42,6 +42,12 @@ pub struct IdentityChannel {
 }
 
 impl IdentityChannel {
+    /// Create a new mTLS channel to the identity service.
+    ///
+    /// # Errors
+    ///
+    /// Returns `ChannelError` if SPIFFE source initialization, TLS config
+    /// building, or the initial connection fails.
     pub async fn new(
         addr: String,
         source: X509Source,
@@ -72,6 +78,10 @@ impl IdentityChannel {
     /// Checks whether the SVID has rotated since the channel was created.
     /// If so, rebuilds the channel (new TLS handshake picks up the fresh
     /// SVID) before returning the client.
+    ///
+    /// # Errors
+    ///
+    /// Returns `ChannelError` if reconnection after SVID rotation fails.
     pub async fn client(&self) -> Result<IdentityServiceClient<Channel>, ChannelError> {
         let current_seq = self.source.updated().last();
         let prev_seq = self.created_seq.load(Ordering::Relaxed);

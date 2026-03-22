@@ -23,6 +23,10 @@ pub struct Kek {
 
 impl Kek {
     /// Create a Kek from raw bytes, validating length is exactly 32 bytes.
+    ///
+    /// # Errors
+    ///
+    /// Returns `CryptoError::InvalidKek` if length is not 32 bytes.
     pub fn from_bytes(bytes: Vec<u8>) -> Result<Self, CryptoError> {
         if bytes.len() != KEK_LEN {
             return Err(CryptoError::InvalidKek);
@@ -30,6 +34,7 @@ impl Kek {
         Ok(Self { bytes })
     }
 
+    #[must_use]
     pub fn as_bytes(&self) -> &[u8] {
         &self.bytes
     }
@@ -42,6 +47,10 @@ impl Kek {
 /// 3. `IDENTITY_KEK_FILE` — path to file containing raw 32 bytes
 ///
 /// Returns the first successfully loaded KEK.
+///
+/// # Errors
+///
+/// Returns `CryptoError` if no KEK source is configured or the loaded bytes are invalid.
 pub fn load_kek() -> Result<Kek, CryptoError> {
     if let Ok(hex_str) = std::env::var(KEK_ENV_HEX) {
         let bytes = decode_hex(&hex_str)?;
@@ -63,6 +72,10 @@ pub fn load_kek() -> Result<Kek, CryptoError> {
 }
 
 /// Load KEK from a specific file path containing raw bytes.
+///
+/// # Errors
+///
+/// Returns `CryptoError` if the file cannot be read or contains invalid data.
 pub fn load_kek_from_file(path: &std::path::Path) -> Result<Kek, CryptoError> {
     let bytes =
         std::fs::read(path).map_err(|e| CryptoError::KekLoad(format!("read failed: {e}")))?;

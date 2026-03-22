@@ -60,9 +60,13 @@ pub struct LoginResult {
 /// 2. Verify password (on blocking thread)
 /// 3. Check user status is Active
 /// 4. Fetch and decrypt active signing key
-/// 5. Generate access_token (JWT), id_token (JWT), refresh_token (opaque)
-/// 6. Store refresh_token hash in database
+/// 5. Generate `access_token` (JWT), `id_token` (JWT), `refresh_token` (opaque)
+/// 6. Store `refresh_token` hash in database
 /// 7. Return all three tokens
+///
+/// # Errors
+///
+/// Returns `LoginError` if credentials are invalid, the account is not active, or token generation fails.
 #[tracing::instrument(skip(pool, password, kek))]
 pub async fn execute(
     pool: &Pool,
@@ -97,10 +101,17 @@ pub async fn execute(
 
     // 5. Build tokens
     let now = Utc::now();
+    // Timestamps are always positive for dates after the Unix epoch.
+    #[allow(clippy::cast_sign_loss)]
     let now_secs = now.timestamp() as u64;
     let access_exp = now + Duration::seconds(ACCESS_TOKEN_LIFETIME_SECS);
     let id_exp = now + Duration::seconds(ID_TOKEN_LIFETIME_SECS);
     let refresh_exp = now + Duration::days(REFRESH_TOKEN_LIFETIME_DAYS);
+
+    #[allow(clippy::cast_sign_loss)]
+    let access_exp_secs = access_exp.timestamp() as u64;
+    #[allow(clippy::cast_sign_loss)]
+    let id_exp_secs = id_exp.timestamp() as u64;
 
     // Access token: minimal claims for authorization
     let access_claims = Claims {
@@ -109,7 +120,7 @@ pub async fn execute(
         aud: Some(Audience::Single(
             "https://api.home.ryanseipp.com".to_string(),
         )),
-        exp: Some(access_exp.timestamp() as u64),
+        exp: Some(access_exp_secs),
         nbf: Some(now_secs),
         iat: Some(now_secs),
         jti: Some(Uuid::new_v4().to_string()),
@@ -130,7 +141,7 @@ pub async fn execute(
         aud: Some(Audience::Single(
             "https://api.home.ryanseipp.com".to_string(),
         )),
-        exp: Some(id_exp.timestamp() as u64),
+        exp: Some(id_exp_secs),
         nbf: Some(now_secs),
         iat: Some(now_secs),
         jti: Some(Uuid::new_v4().to_string()),

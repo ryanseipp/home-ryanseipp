@@ -15,6 +15,10 @@ pub enum GetJwksError {
 }
 
 /// Get the JWKS (all non-revoked public keys) as a JSON string.
+///
+/// # Errors
+///
+/// Returns `GetJwksError` if the database query or JSON serialization fails.
 pub async fn execute(pool: &Pool) -> Result<String, GetJwksError> {
     let public_keys = list_public_jwks(pool).await?;
     let jwk_set = jwk::build_jwk_set(public_keys);

@@ -3,4 +3,5 @@ pub mod pool;
 pub mod proto;
 pub mod routes;
 pub mod server;
+pub mod session;
 pub mod telemetry;

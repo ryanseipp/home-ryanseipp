@@ -17,6 +17,7 @@ pub enum Algorithm {
 
 impl Algorithm {
     /// Returns the JWA algorithm identifier string.
+    #[must_use]
     pub fn as_str(&self) -> &'static str {
         match self {
             Algorithm::ES256 => "ES256",
@@ -25,6 +26,7 @@ impl Algorithm {
     }
 
     /// Returns the EC curve name (RFC 7518 Section 6.2.1.1).
+    #[must_use]
     pub fn curve_name(&self) -> &'static str {
         match self {
             Algorithm::ES256 => "P-256",
@@ -33,6 +35,7 @@ impl Algorithm {
     }
 
     /// Returns the byte length of each EC coordinate for this curve.
+    #[must_use]
     pub fn coordinate_size(&self) -> usize {
         match self {
             Algorithm::ES256 => 32,
@@ -44,7 +47,7 @@ impl Algorithm {
     ///
     /// Uses the FIXED variant which produces `r || s` concatenation,
     /// matching the JWS requirement in RFC 7518 Section 3.4.
-    pub(crate) fn signing_algorithm(&self) -> &'static signature::EcdsaSigningAlgorithm {
+    pub(crate) fn signing_algorithm(self) -> &'static signature::EcdsaSigningAlgorithm {
         match self {
             Algorithm::ES256 => &signature::ECDSA_P256_SHA256_FIXED_SIGNING,
             Algorithm::ES384 => &signature::ECDSA_P384_SHA384_FIXED_SIGNING,
@@ -52,7 +55,7 @@ impl Algorithm {
     }
 
     /// Returns the aws-lc-rs verification algorithm.
-    pub(crate) fn verification_algorithm(&self) -> &'static signature::EcdsaVerificationAlgorithm {
+    pub(crate) fn verification_algorithm(self) -> &'static signature::EcdsaVerificationAlgorithm {
         match self {
             Algorithm::ES256 => &signature::ECDSA_P256_SHA256_FIXED,
             Algorithm::ES384 => &signature::ECDSA_P384_SHA384_FIXED,
@@ -106,10 +109,12 @@ pub struct JwkSet {
 pub struct PrivateKeyBytes(Vec<u8>);
 
 impl PrivateKeyBytes {
+    #[must_use]
     pub fn new(bytes: Vec<u8>) -> Self {
         Self(bytes)
     }
 
+    #[must_use]
     pub fn as_bytes(&self) -> &[u8] {
         &self.0
     }
@@ -127,6 +132,10 @@ pub struct GeneratedKeyPair {
 ///
 /// Returns the PKCS#8 DER-encoded private key and the corresponding
 /// public JWK with a fresh UUID v4 `kid`.
+///
+/// # Errors
+///
+/// Returns `CryptoError` if key generation or public key extraction fails.
 pub fn generate_key_pair(algorithm: Algorithm) -> Result<GeneratedKeyPair, CryptoError> {
     let rng = SystemRandom::new();
 
@@ -150,6 +159,10 @@ pub fn generate_key_pair(algorithm: Algorithm) -> Result<GeneratedKeyPair, Crypt
 ///
 /// Parses the EC uncompressed point (0x04 || x || y) from the public key
 /// and base64url-encodes the coordinates per RFC 7518 Section 6.2.1.
+///
+/// # Errors
+///
+/// Returns `CryptoError::InvalidKeyMaterial` if the PKCS#8 data is invalid.
 pub fn public_jwk_from_pkcs8(
     kid: &str,
     algorithm: Algorithm,
@@ -167,7 +180,7 @@ pub fn public_jwk_from_pkcs8(
         return Err(CryptoError::InvalidKeyMaterial);
     }
 
-    let x = &public_key_bytes[1..1 + coord_size];
+    let x = &public_key_bytes[1..=coord_size];
     let y = &public_key_bytes[1 + coord_size..];
 
     Ok(Jwk {
@@ -181,7 +194,8 @@ pub fn public_jwk_from_pkcs8(
     })
 }
 
-/// Build a JwkSet from a list of public JWKs.
+/// Build a `JwkSet` from a list of public JWKs.
+#[must_use]
 pub fn build_jwk_set(keys: Vec<Jwk>) -> JwkSet {
     JwkSet { keys }
 }

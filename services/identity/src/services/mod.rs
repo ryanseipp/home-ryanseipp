@@ -37,6 +37,7 @@ pub struct IdentityServiceImpl {
 }
 
 impl IdentityServiceImpl {
+    #[must_use]
     pub fn new(db: DatabasePool, web_base_url: String, kek: Arc<Kek>) -> Self {
         Self {
             db,
@@ -102,6 +103,8 @@ impl IdentityService for IdentityServiceImpl {
                 }
             })?;
 
+        // Subsecond nanos are always < 1_000_000_000, fits in i32.
+        #[allow(clippy::cast_possible_wrap)]
         let expires_at = prost_types::Timestamp {
             seconds: result.expires_at.timestamp(),
             nanos: result.expires_at.timestamp_subsec_nanos() as i32,
@@ -131,6 +134,8 @@ impl IdentityService for IdentityServiceImpl {
                 }
             })?;
 
+        // Subsecond nanos are always < 1_000_000_000, fits in i32.
+        #[allow(clippy::cast_possible_wrap)]
         let updated_at = prost_types::Timestamp {
             seconds: user.updated_at.timestamp(),
             nanos: user.updated_at.timestamp_subsec_nanos() as i32,
@@ -286,6 +291,7 @@ pub enum UserStatus {
 }
 
 impl UserStatus {
+    #[must_use]
     pub fn as_str(&self) -> &'static str {
         match self {
             UserStatus::PendingVerification => "pending_verification",
@@ -496,6 +502,10 @@ pub(crate) async fn get_active_signing_key(
 ///
 /// Generates an ES256 key pair, encrypts the private key with the KEK,
 /// and stores it. No-op if an active key already exists.
+///
+/// # Errors
+///
+/// Returns an error if database access, key generation, or encryption fails.
 pub async fn ensure_signing_key(pool: &Pool, kek: &Kek) -> Result<(), Box<dyn std::error::Error>> {
     let client = pool.get().await?;
 
@@ -556,7 +566,7 @@ mod tests {
             updated_at: chrono::DateTime::UNIX_EPOCH,
         };
 
-        let debug_output = format!("{:?}", user);
+        let debug_output = format!("{user:?}");
         assert!(debug_output.contains("[REDACTED]"));
         assert!(!debug_output.contains("secret_salt"));
         assert!(!debug_output.contains("secret_hash"));

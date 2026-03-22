@@ -57,6 +57,10 @@ pub enum SignUpError {
 /// 2. Hash password (on blocking thread)
 /// 3. Generate verification token
 /// 4. Single transaction: insert user + verification token + outbox event
+///
+/// # Errors
+///
+/// Returns `SignUpError` if validation fails, the username/email is taken, or a database error occurs.
 #[tracing::instrument(skip(pool, password, web_base_url), fields(username = %username, email = %email))]
 pub async fn execute(
     pool: &Pool,

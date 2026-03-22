@@ -1,3 +1,5 @@
+#![allow(clippy::must_use_candidate, clippy::missing_panics_doc)]
+
 use std::net::SocketAddr;
 use std::sync::Arc;
 
@@ -9,8 +11,7 @@ use identity::proto::identity_service_client::IdentityServiceClient;
 use identity::proto::{LoginRequest, SignUpRequest};
 use identity::server::run;
 use identity::services::ensure_signing_key;
-use testcontainers_modules::postgres::Postgres;
-use testcontainers_modules::testcontainers::ContainerAsync;
+use test_utils::{ContainerAsync, Postgres};
 use tokio::net::TcpListener;
 use tokio::task;
 use tonic::Request;
@@ -79,7 +80,7 @@ pub async fn activate_user_by_email(pool: &Pool, email: &str) {
 }
 
 pub async fn start_test_server() -> (SocketAddr, ContainerAsync<Postgres>, Pool) {
-    let (_container, pool) = test_db_pool().await;
+    let (container, pool) = test_db_pool().await;
 
     let kek = test_kek();
 
@@ -98,7 +99,7 @@ pub async fn start_test_server() -> (SocketAddr, ContainerAsync<Postgres>, Pool)
 
     task::yield_now().await;
 
-    (addr, _container, pool)
+    (addr, container, pool)
 }
 
 /// Register a user, activate them, log in, and return the access token.

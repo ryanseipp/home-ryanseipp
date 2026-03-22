@@ -5,7 +5,7 @@ use uuid::Uuid;
 use super::OutboxError;
 
 /// Advisory lock ID for leader election.
-/// Hash of "outbox_publisher" truncated to i64.
+/// Hash of "`outbox_publisher`" truncated to i64.
 const OUTBOX_PUBLISHER_LOCK_ID: i64 = 0x6F75_7462_6F78_7075;
 
 /// A row from the outbox table.
@@ -24,6 +24,10 @@ pub struct OutboxRow {
 ///
 /// The caller is responsible for committing the transaction, ensuring the
 /// outbox event is written atomically with the domain operation.
+///
+/// # Errors
+///
+/// Returns `OutboxError` if the database insert fails.
 #[allow(clippy::too_many_arguments)]
 pub async fn insert_event(
     client: &impl GenericClient,
@@ -51,6 +55,10 @@ pub async fn insert_event(
 /// Uses a session-level advisory lock so it auto-releases when the connection
 /// drops. Must be called on a **dedicated** connection held for the publisher's
 /// lifetime. Returns `true` if this connection now holds the lock.
+///
+/// # Errors
+///
+/// Returns `OutboxError` if the advisory lock query fails.
 pub async fn try_acquire_leader_lock(client: &impl GenericClient) -> Result<bool, OutboxError> {
     let row = client
         .query_one(
@@ -63,6 +71,10 @@ pub async fn try_acquire_leader_lock(client: &impl GenericClient) -> Result<bool
 }
 
 /// Fetch unpublished outbox events ordered by creation time.
+///
+/// # Errors
+///
+/// Returns `OutboxError` if the database query fails.
 pub async fn fetch_unpublished(
     pool: &Pool,
     batch_size: i64,
@@ -70,12 +82,12 @@ pub async fn fetch_unpublished(
     let client = pool.get().await?;
     let rows = client
         .query(
-            r#"SELECT id, aggregate_type, aggregate_id, event_type, payload,
+            r"SELECT id, aggregate_type, aggregate_id, event_type, payload,
                       trace_id, span_id, created_at
                FROM outbox
                WHERE published_at IS NULL
                ORDER BY created_at ASC
-               LIMIT $1"#,
+               LIMIT $1",
             &[&batch_size],
         )
         .await?;
@@ -96,6 +108,10 @@ pub async fn fetch_unpublished(
 }
 
 /// Mark an outbox event as published.
+///
+/// # Errors
+///
+/// Returns `OutboxError` if the database update fails.
 pub async fn mark_published(pool: &Pool, id: Uuid) -> Result<(), OutboxError> {
     let client = pool.get().await?;
     client

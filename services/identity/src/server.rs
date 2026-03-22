@@ -29,6 +29,14 @@ pub enum ServerError {
 ///
 /// When `server_tls` is `Some`, the server performs TLS via `tonic-tls`
 /// on each incoming TCP connection.
+///
+/// # Errors
+///
+/// Returns `ServerError` if binding or serving fails.
+///
+/// # Panics
+///
+/// Panics if the SIGTERM signal handler cannot be installed.
 pub async fn run(
     listener: TcpListener,
     web_base_url: &str,

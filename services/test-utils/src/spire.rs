@@ -31,7 +31,7 @@ const SOCAT_PORT: u16 = 8443;
 pub struct SpireWorkloadEntry {
     /// SPIFFE ID, e.g. `spiffe://home.ryanseipp.com/gateway`
     pub spiffe_id: String,
-    /// DNS SAN for the entry (required by spiffe_rustls WebPKI verifier)
+    /// DNS SAN for the entry (required by `spiffe_rustls` `WebPKI` verifier)
     pub dns: String,
 }
 
@@ -75,6 +75,11 @@ impl Drop for SpireTestCluster {
 
 impl SpireTestCluster {
     /// Start the SPIRE cluster and register the given workload entries.
+    ///
+    /// # Panics
+    ///
+    /// Panics if any container fails to start or SPIRE registration fails.
+    #[allow(clippy::too_many_lines)]
     pub async fn start(entries: &[SpireWorkloadEntry]) -> Self {
         let tmpdir = tempfile::tempdir().unwrap();
         // Shared Docker volume name for the agent socket (stays inside the VM).
@@ -270,12 +275,17 @@ plugins {{
     }
 
     /// TCP endpoint for `X509Source::builder().endpoint()`.
+    #[must_use]
     pub fn endpoint(&self) -> String {
         format!("tcp://127.0.0.1:{}", self.socat_host_port)
     }
 
     /// Build an `X509Source` connected to this cluster's agent via TCP,
     /// with a picker that selects the SVID matching `spiffe_id`.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the `X509Source` fails to connect or build.
     pub async fn x509_source(&self, spiffe_id: &str) -> spiffe::X509Source {
         let ep = self.endpoint();
         let id = spiffe_id.to_string();

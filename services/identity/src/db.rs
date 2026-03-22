@@ -41,6 +41,7 @@ impl DatabasePool {
     /// Wrap an existing `Pool` as both writer and reader.
     ///
     /// Useful for tests where the pool is created from a testcontainers URL.
+    #[must_use]
     pub fn from_pool(pool: Pool) -> Self {
         Self {
             writer: pool.clone(),
@@ -52,15 +53,19 @@ impl DatabasePool {
     ///
     /// The `tls` config should be built via `spiffe_rustls::mtls_client()` so
     /// that its dynamic cert resolver handles SVID rotation automatically.
+    ///
+    /// # Errors
+    ///
+    /// Returns `DatabaseError` if the connection config is invalid or pool creation fails.
     pub fn connect(
         db: &DbConfig,
         db_read: Option<&DbConfig>,
-        tls: Arc<rustls::ClientConfig>,
+        tls: &Arc<rustls::ClientConfig>,
     ) -> Result<Self, DatabaseError> {
-        let writer = build_pool(db, Arc::clone(&tls))?;
+        let writer = build_pool(db, Arc::clone(tls))?;
 
         let reader = match db_read {
-            Some(read_cfg) => build_pool(read_cfg, Arc::clone(&tls))?,
+            Some(read_cfg) => build_pool(read_cfg, Arc::clone(tls))?,
             None => writer.clone(),
         };
 
@@ -68,6 +73,10 @@ impl DatabasePool {
     }
 
     /// Create a pool from a connection URL without TLS (for tests).
+    ///
+    /// # Errors
+    ///
+    /// Returns `DatabaseError` if the URL is invalid or pool creation fails.
     pub fn from_url(url: &str, max_size: usize) -> Result<Self, DatabaseError> {
         let pg_config = tokio_postgres::Config::from_str(url)?;
         let mgr = Manager::from_config(
@@ -82,17 +91,23 @@ impl DatabasePool {
     }
 
     /// Writer pool — use for INSERT / UPDATE / DELETE.
+    #[must_use]
     pub fn writer(&self) -> &Pool {
         &self.writer
     }
 
     /// Reader pool — use for SELECT. Routes to replica if configured,
     /// otherwise returns the writer pool.
+    #[must_use]
     pub fn reader(&self) -> &Pool {
         &self.reader
     }
 
     /// Run embedded migrations on the writer (primary) database.
+    ///
+    /// # Errors
+    ///
+    /// Returns `DatabaseError` if a connection cannot be obtained or migrations fail.
     pub async fn migrate(&self) -> Result<(), DatabaseError> {
         let mut client = self.writer.get().await?;
         embedded::migrations::runner()

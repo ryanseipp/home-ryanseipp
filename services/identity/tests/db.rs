@@ -1,52 +1,15 @@
 #![cfg(feature = "db-tests")]
 
-use deadpool_postgres::Pool;
-use identity::db::DatabasePool;
 use identity::outbox;
 use identity::services::sign_up;
 use prost::Message;
-use testcontainers_modules::postgres::Postgres;
-use testcontainers_modules::testcontainers::ContainerAsync;
-use testcontainers_modules::testcontainers::ImageExt;
-use testcontainers_modules::testcontainers::runners::AsyncRunner;
 use uuid::Uuid;
-
-struct TestDb {
-    _container: ContainerAsync<Postgres>,
-    pool: Pool,
-}
-
-impl TestDb {
-    async fn new() -> Self {
-        let container = Postgres::default()
-            .with_tag("17-alpine")
-            .start()
-            .await
-            .unwrap();
-        let host = container.get_host().await.unwrap();
-        let port = container.get_host_port_ipv4(5432).await.unwrap();
-
-        let url = format!("postgres://postgres:postgres@{host}:{port}/postgres");
-        let db = DatabasePool::from_url(&url, 5).unwrap();
-        db.migrate().await.unwrap();
-
-        Self {
-            _container: container,
-            pool: db.writer().clone(),
-        }
-    }
-
-    fn pool(&self) -> &Pool {
-        &self.pool
-    }
-}
 
 // -- Outbox tests --
 
 #[tokio::test]
 async fn outbox_fetch_unpublished_returns_inserted_event() {
-    let test_db = TestDb::new().await;
-    let pool = test_db.pool();
+    let (_container, pool) = test_utils::test_db_pool().await;
 
     let id = Uuid::now_v7();
     let aggregate_id = Uuid::now_v7();
@@ -65,7 +28,7 @@ async fn outbox_fetch_unpublished_returns_inserted_event() {
     .await
     .unwrap();
 
-    let events = outbox::db::fetch_unpublished(pool, 10).await.unwrap();
+    let events = outbox::db::fetch_unpublished(&pool, 10).await.unwrap();
     assert_eq!(events.len(), 1);
     assert_eq!(events[0].id, id);
     assert_eq!(events[0].aggregate_type, "user");
@@ -81,8 +44,7 @@ async fn outbox_fetch_unpublished_returns_inserted_event() {
 
 #[tokio::test]
 async fn outbox_mark_published_excludes_from_fetch() {
-    let test_db = TestDb::new().await;
-    let pool = test_db.pool();
+    let (_container, pool) = test_utils::test_db_pool().await;
 
     let id = Uuid::now_v7();
     let aggregate_id = Uuid::now_v7();
@@ -102,21 +64,20 @@ async fn outbox_mark_published_excludes_from_fetch() {
     .unwrap();
 
     // Before marking published
-    let events = outbox::db::fetch_unpublished(pool, 10).await.unwrap();
+    let events = outbox::db::fetch_unpublished(&pool, 10).await.unwrap();
     assert_eq!(events.len(), 1);
 
     // Mark published
-    outbox::db::mark_published(pool, id).await.unwrap();
+    outbox::db::mark_published(&pool, id).await.unwrap();
 
     // After marking published
-    let events = outbox::db::fetch_unpublished(pool, 10).await.unwrap();
+    let events = outbox::db::fetch_unpublished(&pool, 10).await.unwrap();
     assert!(events.is_empty());
 }
 
 #[tokio::test]
 async fn outbox_fetch_respects_batch_size() {
-    let test_db = TestDb::new().await;
-    let pool = test_db.pool();
+    let (_container, pool) = test_utils::test_db_pool().await;
 
     let client = pool.get().await.unwrap();
     for _ in 0..5 {
@@ -134,14 +95,13 @@ async fn outbox_fetch_respects_batch_size() {
         .unwrap();
     }
 
-    let events = outbox::db::fetch_unpublished(pool, 2).await.unwrap();
+    let events = outbox::db::fetch_unpublished(&pool, 2).await.unwrap();
     assert_eq!(events.len(), 2);
 }
 
 #[tokio::test]
 async fn outbox_advisory_lock_leader_election() {
-    let test_db = TestDb::new().await;
-    let pool = test_db.pool();
+    let (_container, pool) = test_utils::test_db_pool().await;
 
     // First connection acquires lock
     let conn1 = pool.get().await.unwrap();
@@ -159,11 +119,10 @@ async fn outbox_advisory_lock_leader_election() {
 async fn sign_up_inserts_auth_email_outbox_event() {
     use identity::proto::email::v1::{AuthEmailMessage, auth_email_message};
 
-    let test_db = TestDb::new().await;
-    let pool = test_db.pool();
+    let (_container, pool) = test_utils::test_db_pool().await;
 
     sign_up::execute(
-        pool,
+        &pool,
         "outboxuser",
         "outbox@example.com",
         "Test",
@@ -174,7 +133,7 @@ async fn sign_up_inserts_auth_email_outbox_event() {
     .await
     .unwrap();
 
-    let events = outbox::db::fetch_unpublished(pool, 10).await.unwrap();
+    let events = outbox::db::fetch_unpublished(&pool, 10).await.unwrap();
     assert_eq!(events.len(), 1);
 
     let event = &events[0];

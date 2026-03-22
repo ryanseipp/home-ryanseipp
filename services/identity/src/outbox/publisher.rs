@@ -5,7 +5,7 @@ use std::time::Duration;
 use deadpool_postgres::Pool;
 use opentelemetry::trace::{SpanContext, SpanId, TraceFlags, TraceId, TraceState};
 use rskafka::client::ClientBuilder;
-use rskafka::client::partition::{PartitionClient, UnknownTopicHandling};
+use rskafka::client::partition::{Compression, PartitionClient, UnknownTopicHandling};
 use rskafka::record::Record;
 use tokio::task::JoinHandle;
 use tokio::time;
@@ -18,7 +18,7 @@ use super::OutboxError;
 use super::db;
 use super::db::OutboxRow;
 
-/// Map event_type to Kafka topic.
+/// Map `event_type` to Kafka topic.
 fn route_topic(event_type: &str) -> Result<&'static str, OutboxError> {
     match event_type {
         "auth_email" => Ok("email.auth"),
@@ -72,6 +72,7 @@ impl PublisherHandle {
 ///
 /// Returns a [`PublisherHandle`] that the caller uses to trigger graceful
 /// shutdown. The publisher runs until the handle is shut down.
+#[must_use]
 pub fn spawn(
     pool: Pool,
     config: &KafkaConfig,
@@ -92,11 +93,12 @@ pub fn spawn(
 
 /// Run the outbox publisher loop.
 ///
-/// Acquires a PostgreSQL advisory lock for leader election, then polls the
+/// Acquires a `PostgreSQL` advisory lock for leader election, then polls the
 /// outbox table for unpublished events and produces them to Kafka. Only one
 /// replica will actively publish at a time.
 ///
 /// When `tls_config` is provided (from SPIFFE), Kafka connections use mTLS.
+#[allow(clippy::too_many_lines)]
 async fn run(
     pool: Pool,
     config: &KafkaConfig,
@@ -263,7 +265,7 @@ async fn run(
 
                     if let Err(e) =
                         partition_client
-                            .produce(vec![record], Default::default())
+                            .produce(vec![record], Compression::default())
                             .await
                     {
                         tracing::error!(

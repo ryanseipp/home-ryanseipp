@@ -22,6 +22,10 @@ pub struct EncryptedKey {
 
 impl EncryptedKey {
     /// Construct from raw bytes, validating minimum length.
+    ///
+    /// # Errors
+    ///
+    /// Returns `CryptoError::InvalidKeyMaterial` if data is too short.
     pub fn from_bytes(data: Vec<u8>) -> Result<Self, CryptoError> {
         // Minimum: nonce + at least 1 byte ciphertext + tag
         if data.len() < NONCE_LEN + 1 + TAG_LEN {
@@ -30,6 +34,7 @@ impl EncryptedKey {
         Ok(Self { data })
     }
 
+    #[must_use]
     pub fn as_bytes(&self) -> &[u8] {
         &self.data
     }
@@ -52,6 +57,10 @@ impl EncryptedKey {
 ///
 /// Returns `EncryptedKey` containing `nonce || ciphertext || tag`.
 /// A fresh random 96-bit nonce is generated for each call.
+///
+/// # Errors
+///
+/// Returns `CryptoError` if the KEK is invalid or encryption fails.
 pub fn encrypt_private_key(
     kek: &[u8],
     plaintext: &[u8],
@@ -89,6 +98,10 @@ pub fn encrypt_private_key(
 ///
 /// Returns the plaintext private key bytes. Fails with `CryptoError::Decryption`
 /// if the KEK is wrong, the data was tampered with, or the AAD doesn't match.
+///
+/// # Errors
+///
+/// Returns `CryptoError` if the KEK is invalid or decryption fails.
 pub fn decrypt_private_key(
     kek: &[u8],
     encrypted: &EncryptedKey,

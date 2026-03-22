@@ -43,6 +43,14 @@ pub enum ServerError {
 ///
 /// External HTTPS uses file-based certs (publicly-trusted, e.g. Let's Encrypt).
 /// Internal mTLS to backends uses SPIFFE — that's handled in `identity_client`.
+///
+/// # Errors
+///
+/// Returns `ServerError` if binding, TLS setup, or serving fails.
+///
+/// # Panics
+///
+/// Panics if the SIGTERM signal handler cannot be installed.
 pub async fn run(
     listener: TcpListener,
     config: &AppConfig,

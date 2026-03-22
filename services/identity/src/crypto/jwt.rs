@@ -27,6 +27,7 @@ pub enum Audience {
 
 impl Audience {
     /// Check whether the audience contains the given value.
+    #[must_use]
     pub fn contains(&self, value: &str) -> bool {
         match self {
             Audience::Single(s) => s == value,
@@ -47,13 +48,13 @@ pub struct Claims {
     /// Audience (Section 4.1.3)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub aud: Option<Audience>,
-    /// Expiration time as NumericDate — seconds since epoch (Section 4.1.4)
+    /// Expiration time as `NumericDate` — seconds since epoch (Section 4.1.4)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub exp: Option<u64>,
-    /// Not before as NumericDate (Section 4.1.5)
+    /// Not before as `NumericDate` (Section 4.1.5)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub nbf: Option<u64>,
-    /// Issued at as NumericDate (Section 4.1.6)
+    /// Issued at as `NumericDate` (Section 4.1.6)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub iat: Option<u64>,
     /// JWT ID (Section 4.1.7)
@@ -106,6 +107,10 @@ pub struct VerificationOptions<'a> {
 ///
 /// ES256 uses `ECDSA_P256_SHA256_FIXED_SIGNING` which produces `r || s` (64 bytes),
 /// matching the JWS requirement in RFC 7518 Section 3.4.
+///
+/// # Errors
+///
+/// Returns `CryptoError` if serialization or signing fails.
 pub fn sign_jwt(
     algorithm: Algorithm,
     kid: &str,
@@ -146,6 +151,10 @@ pub fn sign_jwt(
 /// 2. Validate `alg` against allowlist (never trust header alone)
 /// 3. Verify signature using the public key
 /// 4. Validate exp, nbf, iss, aud claims
+///
+/// # Errors
+///
+/// Returns `CryptoError` if the token is malformed, the signature is invalid, or claims fail validation.
 pub fn verify_jwt(
     token: &str,
     public_jwk: &Jwk,
@@ -235,6 +244,10 @@ pub fn verify_jwt(
 }
 
 /// Reconstruct an `EcdsaKeyPair` from PKCS#8 DER bytes.
+///
+/// # Errors
+///
+/// Returns `CryptoError::InvalidKeyMaterial` if the PKCS#8 data is invalid.
 pub fn key_pair_from_pkcs8(
     algorithm: Algorithm,
     pkcs8_der: &[u8],
