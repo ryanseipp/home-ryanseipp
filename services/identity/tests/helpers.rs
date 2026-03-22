@@ -11,8 +11,6 @@ use identity::server::run;
 use identity::services::ensure_signing_key;
 use testcontainers_modules::postgres::Postgres;
 use testcontainers_modules::testcontainers::ContainerAsync;
-use testcontainers_modules::testcontainers::ImageExt;
-use testcontainers_modules::testcontainers::runners::AsyncRunner;
 use tokio::net::TcpListener;
 use tokio::task;
 use tonic::Request;
@@ -39,19 +37,7 @@ pub fn random_user_data() -> TestUser {
 }
 
 pub async fn test_db_pool() -> (ContainerAsync<Postgres>, Pool) {
-    let container = Postgres::default()
-        .with_tag("17-alpine")
-        .start()
-        .await
-        .unwrap();
-    let host = container.get_host().await.unwrap();
-    let port = container.get_host_port_ipv4(5432).await.unwrap();
-
-    let url = format!("postgres://postgres:postgres@{host}:{port}/postgres");
-    let db = DatabasePool::from_url(&url, 5).unwrap();
-    db.migrate().await.unwrap();
-
-    (container, db.writer().clone())
+    test_utils::test_db_pool().await
 }
 
 pub fn test_kek() -> Arc<Kek> {

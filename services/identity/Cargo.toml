@@ -47,11 +47,22 @@ zeroize.workspace = true
 [dev-dependencies]
 jsonwebtoken = { version = "10.3", default-features = false, features = ["rust_crypto"] }
 proptest = "1"
+divan.workspace = true
 temp-env = "0.3"
 rcgen.workspace = true
 tempfile = "3"
+test-utils = { path = "../test-utils" }
 testcontainers-modules = { version = "0.15", features = ["postgres"] }
 tonic = { workspace = true, features = ["transport", "channel"] }
+
+[[bench]]
+name = "crypto"
+harness = false
+
+[[bench]]
+name = "identity_grpc"
+harness = false
+required-features = ["db-tests"]
 
 [lints]
 workspace = true

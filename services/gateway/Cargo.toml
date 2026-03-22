@@ -64,12 +64,19 @@ reqwest = { version = "0.13", default-features = false, features = ["json", "rus
 rustls = { workspace = true, features = ["aws_lc_rs"] }
 tokio-postgres.workspace = true
 deadpool-postgres.workspace = true
+divan.workspace = true
 temp-env = "0.3"
 tempfile = "3"
+test-utils = { path = "../test-utils" }
 testcontainers.workspace = true
 testcontainers-modules = { version = "0.15", features = ["postgres"] }
 tokio-rustls.workspace = true
 uuid.workspace = true
+
+[[bench]]
+name = "e2e_http"
+harness = false
+required-features = ["db-tests"]
 
 [build-dependencies]
 tonic-prost-build.workspace = true

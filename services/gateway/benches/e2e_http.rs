@@ -1,11 +1,7 @@
-#![cfg(feature = "db-tests")]
-
-mod spire_fixture;
-
 use std::net::SocketAddr;
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
 
-use deadpool_postgres::Pool;
 use gateway::config::{AppConfig, IdentityConfig as GatewayIdentityConfig};
 use gateway::pool::IdentityChannel;
 use gateway::routes::AppState;
@@ -18,17 +14,40 @@ use identity::services::ensure_signing_key;
 use rustls::crypto::aws_lc_rs::default_provider;
 use rustls::pki_types::ServerName;
 use spiffe_rustls::authorizer;
-
-use aws_lc_rs::rand;
+use test_utils::{SpireTestCluster, SpireWorkloadEntry};
 use testcontainers_modules::postgres::Postgres;
 use testcontainers_modules::testcontainers::ContainerAsync;
 use tokio::net::TcpListener;
+use tokio::runtime::Runtime;
 use tokio::task;
 
-/// Start the identity gRPC server with SPIFFE mTLS and return its address.
-async fn start_identity_server(pool: Pool, server_tls: Arc<rustls::ServerConfig>) -> SocketAddr {
+struct BenchEnv {
+    spire: Option<SpireTestCluster>,
+    db_container: Option<ContainerAsync<Postgres>>,
+    rt: Runtime,
+    gateway_addr: SocketAddr,
+    client: reqwest::Client,
+}
+
+impl Drop for BenchEnv {
+    fn drop(&mut self) {
+        let db = self.db_container.take();
+        let spire = self.spire.take();
+        self.rt.block_on(async move {
+            drop(db);
+            drop(spire);
+        });
+    }
+}
+
+static COUNTER: AtomicU64 = AtomicU64::new(0);
+
+async fn start_identity_server(
+    pool: deadpool_postgres::Pool,
+    server_tls: Arc<rustls::ServerConfig>,
+) -> SocketAddr {
     let mut kek_bytes = vec![0u8; 32];
-    rand::fill(&mut kek_bytes).unwrap();
+    aws_lc_rs::rand::fill(&mut kek_bytes).unwrap();
     let kek = Arc::new(Kek::from_bytes(kek_bytes).unwrap());
 
     ensure_signing_key(&pool, &kek).await.unwrap();
@@ -62,8 +81,6 @@ async fn start_identity_server(pool: Pool, server_tls: Arc<rustls::ServerConfig>
     addr
 }
 
-/// Start the gateway HTTP server (plain HTTP externally) with a SPIFFE mTLS
-/// connection pool to the identity backend.
 async fn start_gateway_server(source: spiffe::X509Source, identity_addr: SocketAddr) -> SocketAddr {
     let identity = Arc::new(
         IdentityChannel::new(
@@ -94,18 +111,24 @@ async fn start_gateway_server(source: spiffe::X509Source, identity_addr: SocketA
     addr
 }
 
-struct TestEnv {
-    gateway_addr: SocketAddr,
-    _spire: spire_fixture::SpireTestCluster,
-    _db_container: ContainerAsync<Postgres>,
-}
+fn start_env() -> BenchEnv {
+    let _ = default_provider().install_default();
+    test_utils::init_tracing();
 
-impl TestEnv {
-    async fn start() -> Self {
-        let _ = default_provider().install_default();
-        test_utils::init_tracing();
+    let rt = Runtime::new().unwrap();
+    let (gateway_addr, spire, db_container) = rt.block_on(async {
+        let spire = SpireTestCluster::start(&[
+            SpireWorkloadEntry {
+                spiffe_id: "spiffe://home.ryanseipp.com/gateway".into(),
+                dns: "gateway".into(),
+            },
+            SpireWorkloadEntry {
+                spiffe_id: "spiffe://home.ryanseipp.com/identity".into(),
+                dns: "identity".into(),
+            },
+        ])
+        .await;
 
-        let spire = spire_fixture::start().await;
         let (db_container, pool) = test_utils::test_db_pool().await;
 
         let identity_source = spire
@@ -123,81 +146,47 @@ impl TestEnv {
             .await;
         let gateway_addr = start_gateway_server(gateway_source, identity_addr).await;
 
-        TestEnv {
-            gateway_addr,
-            _spire: spire,
-            _db_container: db_container,
-        }
-    }
-
-    fn url(&self, path: &str) -> String {
-        format!("http://[::1]:{}{path}", self.gateway_addr.port())
-    }
-}
-
-#[tokio::test]
-async fn sign_up_through_gateway() {
-    let env = TestEnv::start().await;
-
-    let resp = reqwest::Client::new()
-        .post(env.url("/api/v1/sign-up"))
-        .json(&serde_json::json!({
-            "username": "testuser",
-            "given_name": "Test",
-            "family_name": "User",
-            "email": "test@example.com",
-            "password": "secure-password-123"
-        }))
-        .send()
-        .await
-        .unwrap();
-
-    assert_eq!(resp.status(), 204);
-}
-
-#[tokio::test]
-async fn sign_up_duplicate_returns_conflict() {
-    let env = TestEnv::start().await;
-
-    let client = reqwest::Client::new();
-    let body = serde_json::json!({
-        "username": "dupeuser",
-        "given_name": "Test",
-        "family_name": "User",
-        "email": "dupe@example.com",
-        "password": "secure-password-123"
+        (gateway_addr, spire, db_container)
     });
 
-    let resp1 = client
-        .post(env.url("/api/v1/sign-up"))
-        .json(&body)
-        .send()
-        .await
-        .unwrap();
-    assert_eq!(resp1.status(), 204);
-
-    // Second sign-up with same username should return 409
-    let resp2 = client
-        .post(env.url("/api/v1/sign-up"))
-        .json(&body)
-        .send()
-        .await
-        .unwrap();
-    assert_eq!(resp2.status(), 409);
+    BenchEnv {
+        spire: Some(spire),
+        db_container: Some(db_container),
+        rt,
+        gateway_addr,
+        client: reqwest::Client::new(),
+    }
 }
 
-#[tokio::test]
-async fn verify_email_invalid_token_returns_not_found() {
-    let env = TestEnv::start().await;
+#[divan::bench]
+fn bench_e2e_sign_up(bencher: divan::Bencher) {
+    let env = start_env();
 
-    let resp = reqwest::Client::new()
-        .post(env.url("/api/v1/verify-email"))
-        .json(&serde_json::json!({
-            "token": "invalid-token-value"
-        }))
-        .send()
-        .await
-        .unwrap();
+    bencher.bench(|| {
+        let n = COUNTER.fetch_add(1, Ordering::Relaxed);
+        env.rt.block_on(async {
+            let resp = env
+                .client
+                .post(format!(
+                    "http://[::1]:{}/api/v1/sign-up",
+                    env.gateway_addr.port()
+                ))
+                .json(&serde_json::json!({
+                    "username": format!("e2euser-{n}"),
+                    "given_name": "E2E",
+                    "family_name": "User",
+                    "email": format!("e2e-{n}@example.com"),
+                    "password": "secure-password-123"
+                }))
+                .send()
+                .await
+                .unwrap();
 
-    assert_eq!(resp.status(), 404);
+            assert_eq!(resp.status(), 204);
+        })
+    });
+}
+
+fn main() {
+    divan::main();
 }

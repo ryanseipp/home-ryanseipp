@@ -1,0 +1,27 @@
+[package]
+name = "test-utils"
+version = "0.1.0"
+edition = "2024"
+
+[lints]
+workspace = true
+
+[dependencies]
+# Database
+deadpool-postgres.workspace = true
+identity = { path = "../identity" }
+
+# Testcontainers
+testcontainers.workspace = true
+testcontainers-modules = { version = "0.15", features = ["postgres"] }
+
+# SPIFFE
+spiffe.workspace = true
+
+# Async
+tokio = { workspace = true, features = ["time"] }
+
+# Misc
+serde_json.workspace = true
+tempfile = "3"
+tracing-subscriber.workspace = true
