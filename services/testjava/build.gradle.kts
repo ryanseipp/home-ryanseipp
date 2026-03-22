@@ -11,7 +11,9 @@ val quarkusPlatformVersion: String by project
 dependencies {
   implementation(
       enforcedPlatform(
-          "${quarkusPlatformGroupId}:${quarkusPlatformArtifactId}:${quarkusPlatformVersion}"))
+          "${quarkusPlatformGroupId}:${quarkusPlatformArtifactId}:${quarkusPlatformVersion}"
+      )
+  )
   implementation("io.quarkus:quarkus-hibernate-orm-panache")
   implementation("io.quarkus:quarkus-messaging-kafka")
   implementation("io.quarkus:quarkus-opentelemetry")

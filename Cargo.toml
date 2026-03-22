@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["services/gateway", "services/identity", "services/test-utils"]
+members = ["services/gateway", "services/identity", "services/test-utils", "services/web"]
 
 [workspace.package]
 version = "0.1.0"
@@ -65,13 +65,28 @@ scylla = { version = "1.5.0", default-features = false, features = ["rustls-023"
 axum = { version = "0.8.8", default-features = false, features = ["http1", "http2", "json", "matched-path", "original-uri", "query", "tokio", "tracing"] }
 
 tower = { version = "0.5.3", default-features = false, features = ["util"] }
-tower-http = { version = "0.6.8", default-features = false, features = ["trace", "cors"] }
+tower-http = { version = "0.6.8", default-features = false, features = ["trace", "cors", "set-header"] }
 hyper = { version = "1.8.1", default-features = false, features = ["server", "http1", "http2"] }
 hyper-util = { version = "0.1.20", default-features = false, features = ["tokio", "server-auto", "http1", "http2"] }
 
 # TLS
 tokio-rustls = { version = "0.26.4", default-features = false, features = ["aws-lc-rs"] }
 rustls-pemfile = { version = "2.2.0", default-features = false, features = ["std"] }
+
+# Leptos (SSR + hydration)
+leptos = { version = "0.8.17", default-features = false }
+leptos_axum = { version = "0.8.8" }
+leptos_meta = { version = "0.8.6", default-features = false }
+leptos_router = { version = "0.8.12", default-features = false }
+wasm-bindgen = "0.2.114"
+console_error_panic_hook = "0.1.7"
+
+# HTTP client middleware (OTel auto-instrumentation)
+reqwest-middleware = { version = "0.5.1", default-features = false }
+reqwest-tracing = { version = "0.7.0", default-features = false, features = ["opentelemetry_0_31"] }
+
+# Styling
+tailwind_fuse = { version = "0.3.2", default-features = false }
 
 # Benchmarking
 divan = "0.1.21"
@@ -100,3 +115,11 @@ reqwest = { version = "0.13", default-features = false, features = ["json", "rus
 temp-env = "0.3"
 tempfile = "3"
 testcontainers-modules = { version = "0.15", default-features = false, features = ["postgres", "scylladb", "kafka"] }
+
+# Size-optimized profile for WASM bundles
+[profile.wasm-release]
+inherits = "release"
+opt-level = 'z'
+lto = true
+codegen-units = 1
+panic = "abort"

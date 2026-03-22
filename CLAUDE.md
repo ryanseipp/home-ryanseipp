@@ -14,7 +14,7 @@ nix develop
 ### Building Services
 
 ```bash
-nix build .#<service-name>    # Build specific service (gateway, identity, testdotnet, testjava, email)
+nix build .#<service-name>    # Build specific service (gateway, identity, web, testdotnet, testjava, email)
 nix flake check               # Build and check all services
 ```
 
@@ -73,6 +73,31 @@ cd services/testjava
 ./gradlew test                # Run tests
 ./gradlew quarkusDev          # Dev mode with hot reload
 ```
+
+**Leptos** (web):
+
+```bash
+cargo leptos watch                       # Dev mode with SSR + WASM hot reload
+cargo leptos build --release             # Production build
+cargo clippy -p web --features ssr       # Lint (web has custom lint config for Leptos macros)
+cargo nextest run -p web --features ssr  # Unit tests
+```
+
+The `web` service is a Leptos SSR app built via `cargo-leptos` (not in
+`rustServices`). It has separate `ssr` and `hydrate` feature flags for server
+and client builds respectively. `cargo-leptos` handles both targets
+automatically. The `view!` macro is formatted by `leptosfmt` (scoped to
+`services/web/` in treefmt).
+
+**Leptos E2E tests** (Playwright via Deno):
+
+```bash
+cd services/web/e2e
+deno task test:install                   # Install Playwright browsers (first time)
+deno task test                           # Run E2E + accessibility tests
+```
+
+Requires running: web service, Gateway, Identity, Postgres, ScyllaDB.
 
 **Protobuf** (generates TypeScript for email service):
 
@@ -147,6 +172,8 @@ in `nix/`:
 
 - **rustServices**: Built with Crane, workspace members defined in root
   `Cargo.toml`
+- **leptosServices**: Built with cargo-leptos inside Crane (dual-target: server
+  SSR + client WASM hydration)
 - **dotnetServices**: Built with NativeAOT for standalone executables
 - **javaServices**: Built with Quarkus + GraalVM native image
 - **denoServices**: Built with Deno compile
@@ -165,12 +192,18 @@ images.
 - **Session storage**: Gateway uses ScyllaDB for session storage (session
   cookies → JWT pass-through to microservices). Config via `GATEWAY__SCYLLA__*`
   env vars.
+- **Web UI**: Leptos SSR app that is a **client** of the Gateway API, not a
+  microservice behind it. Communicates over HTTPS+JSON (no mTLS). No `#[server]`
+  functions — all API calls proxy through the SSR server to the Gateway. Config
+  via `WEB__*` env vars (e.g., `WEB__GATEWAY__URL`). Components are manually
+  implemented accessible primitives (shadcn-inspired, WAI-ARIA compliant) styled
+  with TailwindCSS v4.
 
 ### Key Paths
 
 - `proto/` - Protobuf definitions shared across services
-- `nix/*.nix` - Build modules for each language (rust.nix, dotnet.nix, java.nix,
-  deno.nix)
+- `nix/*.nix` - Build modules for each language (rust.nix, leptos.nix,
+  dotnet.nix, java.nix, deno.nix)
 - `services/<name>/` - Individual service source code
 - `infra/network/` - Mikrotik RouterOS Terraform configs
 - `infra/nodes/` - Talos Linux cluster configs via talhelper

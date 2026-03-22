@@ -10,7 +10,11 @@
     let
       # Collect all service packages for inputsFrom
       allServiceNames =
-        config.rustServices ++ config.dotnetServices ++ config.javaServices ++ config.denoServices;
+        config.rustServices
+        # ++ config.dotnetServices
+        ++ config.javaServices
+        ++ config.denoServices
+        ++ config.leptosServices;
       servicePackages = map (name: config.packages.${name}) allServiceNames;
     in
     {
@@ -29,15 +33,17 @@
           argocd
           buf
           protobuf
+          cargo-leptos
           cargo-llvm-cov
           cargo-nextest
           cargo-watch
+          leptosfmt
           sqlx-cli
           cilium-cli
           clang
           corepack_24
           deno
-          dotnetCorePackages.sdk_10_0
+          # dotnetCorePackages.sdk_10_0
           graalvmPackages.graalvm-ce
           helmfile
           jdk25
@@ -52,7 +58,9 @@
           sops
           talhelper
           talosctl
+          tailwindcss_4
           terragrunt
+          wasm-bindgen-cli
           yq-go
           zlib.dev
         ];

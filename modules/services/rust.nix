@@ -36,6 +36,7 @@ in
           targets = [
             "x86_64-unknown-linux-musl"
             "aarch64-unknown-linux-musl"
+            "wasm32-unknown-unknown"
           ];
         }
       );
@@ -47,7 +48,14 @@ in
           (craneLib.filterCargoSources path type)
           || (lib.hasSuffix ".proto" path)
           || (lib.hasInfix "/migrations/" path)
-          || (lib.hasInfix "/.sqlx/" path);
+          || (lib.hasInfix "/.sqlx/" path)
+          || (lib.hasSuffix ".html" path)
+          || (lib.hasSuffix ".css" path)
+          || (lib.hasSuffix ".js" path)
+          || (lib.hasSuffix ".svg" path)
+          || (lib.hasSuffix ".ico" path)
+          || (lib.hasInfix "/public/" path)
+          || (lib.hasInfix "/style/" path);
       };
 
       commonArgs = {

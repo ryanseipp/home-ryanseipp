@@ -1,0 +1,73 @@
+[package]
+name = "web"
+version.workspace = true
+edition = "2024"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+# Inherit workspace lints but relax rules that conflict with Leptos view! macros.
+# view! expands HTML elements to absolute paths; must_use_candidate and
+# doc_markdown are noisy on component functions.
+[lints.rust]
+warnings = "deny"
+
+[lints.clippy]
+all = { level = "deny", priority = -1 }
+pedantic = { level = "deny", priority = -1 }
+absolute_paths = { level = "allow", priority = 1 }
+must_use_candidate = { level = "allow", priority = 1 }
+doc_markdown = { level = "allow", priority = 1 }
+
+[features]
+default = ["ssr"]
+hydrate = ["leptos/hydrate", "dep:console_error_panic_hook", "dep:wasm-bindgen"]
+ssr = ["dep:axum", "dep:tokio", "dep:leptos_axum", "dep:reqwest", "dep:tower", "dep:tower-http", "dep:config", "dep:tracing", "dep:tracing-subscriber", "dep:tracing-opentelemetry", "dep:opentelemetry", "dep:opentelemetry_sdk", "dep:opentelemetry-otlp", "dep:json-subscriber", "dep:reqwest-middleware", "dep:reqwest-tracing", "leptos/ssr", "leptos/nonce", "leptos_meta/ssr", "leptos_router/ssr"]
+
+[dependencies]
+leptos.workspace = true
+leptos_meta.workspace = true
+leptos_router.workspace = true
+tailwind_fuse.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+
+# SSR-only dependencies
+leptos_axum = { workspace = true, optional = true }
+axum = { workspace = true, optional = true }
+tokio = { workspace = true, optional = true }
+tower = { workspace = true, optional = true }
+tower-http = { workspace = true, optional = true }
+reqwest = { workspace = true, optional = true }
+reqwest-middleware = { workspace = true, optional = true }
+reqwest-tracing = { workspace = true, optional = true }
+config = { workspace = true, optional = true }
+
+# SSR-only: Observability
+tracing = { workspace = true, optional = true }
+tracing-subscriber = { workspace = true, optional = true }
+tracing-opentelemetry = { workspace = true, optional = true }
+opentelemetry = { workspace = true, optional = true }
+opentelemetry_sdk = { workspace = true, optional = true }
+opentelemetry-otlp = { workspace = true, optional = true }
+json-subscriber = { workspace = true, optional = true }
+
+# Client-only dependencies
+wasm-bindgen = { workspace = true, optional = true }
+console_error_panic_hook = { workspace = true, optional = true }
+
+[package.metadata.leptos]
+output-name = "web"
+site-root = "target/site"
+site-pkg-dir = "pkg"
+tailwind-input-file = "style/main.css"
+assets-dir = "public"
+site-addr = "127.0.0.1:3000"
+reload-port = 3001
+end2end-cmd = "deno task test"
+end2end-dir = "e2e"
+bin-features = ["ssr"]
+bin-default-features = false
+lib-features = ["hydrate"]
+lib-default-features = false
+lib-profile-release = "wasm-release"

@@ -1,0 +1,10 @@
+{
+  "tasks": {
+    "test": "deno test --allow-net --allow-env --allow-read --allow-run tests/",
+    "test:install": "deno run -A npm:playwright install --with-deps chromium"
+  },
+  "imports": {
+    "@playwright/test": "npm:@playwright/test@^1.50.0",
+    "@axe-core/playwright": "npm:@axe-core/playwright@^4.10.0"
+  }
+}

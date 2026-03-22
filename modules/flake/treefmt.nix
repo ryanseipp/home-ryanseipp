@@ -16,11 +16,15 @@
         ];
         programs = {
           deno.enable = true;
+          leptosfmt = {
+            enable = true;
+            includes = [ "services/web/**/*.rs" ];
+          };
           nixfmt.enable = true;
           rustfmt.enable = true;
           hclfmt.enable = true;
           terraform.enable = true;
-          csharpier.enable = true;
+          # csharpier.enable = true;
           google-java-format.enable = true;
           ktfmt.enable = true;
           prettier = {
