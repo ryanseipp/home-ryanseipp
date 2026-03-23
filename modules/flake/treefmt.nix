@@ -32,6 +32,8 @@
             includes = [
               "*.md"
               "*.json"
+              "*.js"
+              "*.ts"
               "*.yaml"
               "*.yml"
             ];

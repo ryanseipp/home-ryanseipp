@@ -1,4 +1,10 @@
-import { type Consumer, type EachMessagePayload, Kafka, logLevel, type SASLOptions } from "kafkajs";
+import {
+  type Consumer,
+  type EachMessagePayload,
+  Kafka,
+  logLevel,
+  type SASLOptions,
+} from "kafkajs";
 import { config } from "../config.ts";
 import { AuthEmailMessage } from "../generated/ryanseipp/email/v1/auth.ts";
 import { handleAuthEmailMessage } from "./handler.ts";
@@ -12,14 +18,16 @@ export async function startConsumer(): Promise<void> {
     ssl: config.kafka.ssl,
     sasl: config.kafka.sasl as SASLOptions | undefined,
     logLevel: logLevel.INFO,
-    logCreator: () => ({ namespace, level, log }) => {
-      const { message, ...extra } = log;
-      console.info(`[kafka] ${message}`, {
-        namespace,
-        kafkaLevel: level,
-        ...extra,
-      });
-    },
+    logCreator:
+      () =>
+      ({ namespace, level, log }) => {
+        const { message, ...extra } = log;
+        console.info(`[kafka] ${message}`, {
+          namespace,
+          kafkaLevel: level,
+          ...extra,
+        });
+      },
   });
 
   consumer = kafka.consumer({

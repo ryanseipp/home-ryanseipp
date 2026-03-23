@@ -1,6 +1,14 @@
 # nix build
 result
 
+# SPIRE bootstrap certs (generated locally)
+local/spire/agent-bootstrap.crt
+local/spire/agent-bootstrap.key
+
+# playwright
+playwright-report/
+test-results/
+
 # Created by https://www.toptal.com/developers/gitignore/api/go,java,rust,linux,macos,react,direnv,gradle,windows,aspnetcore,terraform,terragrunt,helm
 # Edit at https://www.toptal.com/developers/gitignore?templates=go,java,rust,linux,macos,react,direnv,gradle,windows,aspnetcore,terraform,terragrunt,helm
 

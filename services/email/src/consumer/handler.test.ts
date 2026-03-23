@@ -27,7 +27,9 @@ function createMockDeps(sendEmailResult: SendResult | Error): {
       : () => Promise.resolve(sendEmailResult),
   );
 
-  const recordEmailSentSpy = spy((_emailType: string, _durationMs: number) => {});
+  const recordEmailSentSpy = spy(
+    (_emailType: string, _durationMs: number) => {},
+  );
   const recordEmailFailedSpy = spy(
     (_emailType: string, _errorType: string, _durationMs: number) => {},
   );
@@ -43,42 +45,51 @@ function createMockDeps(sendEmailResult: SendResult | Error): {
 }
 
 Deno.test("handleAuthEmailMessage", async (t) => {
-  await t.step("successful send records metrics and returns normally", async () => {
-    const { deps, sendEmailSpy, recordEmailSentSpy, recordEmailFailedSpy } = createMockDeps({
-      success: true,
-      messageId: "msg_123",
-    });
-    const message = createEmailVerificationMessage();
-    const metadata = createMessageMetadata();
+  await t.step(
+    "successful send records metrics and returns normally",
+    async () => {
+      const { deps, sendEmailSpy, recordEmailSentSpy, recordEmailFailedSpy } =
+        createMockDeps({
+          success: true,
+          messageId: "msg_123",
+        });
+      const message = createEmailVerificationMessage();
+      const metadata = createMessageMetadata();
 
-    await handleAuthEmailMessage(message, metadata, deps);
+      await handleAuthEmailMessage(message, metadata, deps);
 
-    expect(sendEmailSpy.calls.length).toBe(1);
-    expect(recordEmailSentSpy.calls.length).toBe(1);
-    expect(recordEmailSentSpy.calls[0].args[0]).toBe("emailVerification");
-    expect(recordEmailFailedSpy.calls.length).toBe(0);
-  });
+      expect(sendEmailSpy.calls.length).toBe(1);
+      expect(recordEmailSentSpy.calls.length).toBe(1);
+      expect(recordEmailSentSpy.calls[0].args[0]).toBe("emailVerification");
+      expect(recordEmailFailedSpy.calls.length).toBe(0);
+    },
+  );
 
-  await t.step("retryable API error throws and records failure metrics", async () => {
-    const { deps, recordEmailSentSpy, recordEmailFailedSpy } = createMockDeps({
-      success: false,
-      error: "Rate limited",
-    });
-    const message = createEmailVerificationMessage();
-    const metadata = createMessageMetadata();
+  await t.step(
+    "retryable API error throws and records failure metrics",
+    async () => {
+      const { deps, recordEmailSentSpy, recordEmailFailedSpy } = createMockDeps(
+        {
+          success: false,
+          error: "Rate limited",
+        },
+      );
+      const message = createEmailVerificationMessage();
+      const metadata = createMessageMetadata();
 
-    await assertRejects(
-      () => handleAuthEmailMessage(message, metadata, deps),
-      Error,
-      "Rate limited",
-    );
+      await assertRejects(
+        () => handleAuthEmailMessage(message, metadata, deps),
+        Error,
+        "Rate limited",
+      );
 
-    expect(recordEmailFailedSpy.calls.length).toBe(1);
-    expect(recordEmailFailedSpy.calls[0].args[0]).toBe("emailVerification");
-    // Error type is "Error" because the catch block records the thrown error's constructor name
-    expect(recordEmailFailedSpy.calls[0].args[1]).toBe("Error");
-    expect(recordEmailSentSpy.calls.length).toBe(0);
-  });
+      expect(recordEmailFailedSpy.calls.length).toBe(1);
+      expect(recordEmailFailedSpy.calls[0].args[0]).toBe("emailVerification");
+      // Error type is "Error" because the catch block records the thrown error's constructor name
+      expect(recordEmailFailedSpy.calls[0].args[1]).toBe("Error");
+      expect(recordEmailSentSpy.calls.length).toBe(0);
+    },
+  );
 
   await t.step("non-retryable API error returns without throwing", async () => {
     const { deps, recordEmailFailedSpy } = createMockDeps({
@@ -96,24 +107,27 @@ Deno.test("handleAuthEmailMessage", async (t) => {
     expect(recordEmailFailedSpy.calls[0].args[1]).toBe("Invalid email address");
   });
 
-  await t.step("retryable exception throws and records failure metrics", async () => {
-    const { deps, recordEmailSentSpy, recordEmailFailedSpy } = createMockDeps(
-      new Error("Connection refused"),
-    );
-    const message = createPasswordResetMessage();
-    const metadata = createMessageMetadata();
+  await t.step(
+    "retryable exception throws and records failure metrics",
+    async () => {
+      const { deps, recordEmailSentSpy, recordEmailFailedSpy } = createMockDeps(
+        new Error("Connection refused"),
+      );
+      const message = createPasswordResetMessage();
+      const metadata = createMessageMetadata();
 
-    await assertRejects(
-      () => handleAuthEmailMessage(message, metadata, deps),
-      Error,
-      "Connection refused",
-    );
+      await assertRejects(
+        () => handleAuthEmailMessage(message, metadata, deps),
+        Error,
+        "Connection refused",
+      );
 
-    expect(recordEmailFailedSpy.calls.length).toBe(1);
-    expect(recordEmailFailedSpy.calls[0].args[0]).toBe("passwordReset");
-    expect(recordEmailFailedSpy.calls[0].args[1]).toBe("Error");
-    expect(recordEmailSentSpy.calls.length).toBe(0);
-  });
+      expect(recordEmailFailedSpy.calls.length).toBe(1);
+      expect(recordEmailFailedSpy.calls[0].args[0]).toBe("passwordReset");
+      expect(recordEmailFailedSpy.calls[0].args[1]).toBe("Error");
+      expect(recordEmailSentSpy.calls.length).toBe(0);
+    },
+  );
 
   await t.step("non-retryable exception returns without throwing", async () => {
     const { deps, recordEmailFailedSpy } = createMockDeps(

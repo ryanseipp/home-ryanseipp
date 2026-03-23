@@ -115,7 +115,8 @@ export async function handleAuthEmailMessage(
     });
   } catch (error) {
     const durationMs = Date.now() - sendStartTime;
-    const errorType = error instanceof Error ? error.constructor.name : "unknown";
+    const errorType =
+      error instanceof Error ? error.constructor.name : "unknown";
     deps.recordEmailFailed(emailType, errorType, durationMs);
 
     if (error instanceof Error && !isRetryable(error)) {

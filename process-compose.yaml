@@ -1,0 +1,87 @@
+version: "0.5"
+
+environment:
+  - "OTEL_SDK_DISABLED=true"
+  - "SPIFFE_ENDPOINT_SOCKET=tcp://localhost:8443"
+  - "RUST_LOG=info"
+
+processes:
+  spire:
+    command: "docker compose up --wait spire-server spire-agent spire-socket-bridge"
+    shutdown:
+      command: "docker compose down"
+    readiness_probe:
+      exec:
+        command: "docker compose exec spire-agent /opt/spire/bin/spire-agent healthcheck"
+      initial_delay_seconds: 3
+      period_seconds: 3
+      failure_threshold: 10
+
+  spire-setup:
+    command: "./local/spire/setup.sh"
+    depends_on:
+      spire:
+        condition: process_healthy
+
+  infra:
+    command: >
+      docker compose up --wait --wait-timeout 120
+      spiffe-helper-postgres spiffe-helper-scylla
+      postgres scylla kafka
+    depends_on:
+      spire-setup:
+        condition: process_completed_successfully
+    readiness_probe:
+      exec:
+        command: "docker compose exec postgres pg_isready -U identity"
+      initial_delay_seconds: 5
+      period_seconds: 5
+      failure_threshold: 20
+
+  identity:
+    command: "cargo run -p identity"
+    environment:
+      - "IDENTITY__DB__HOST=localhost"
+      - "IDENTITY__DB__PORT=5432"
+      - "IDENTITY__DB__DATABASE=identity"
+      - "IDENTITY__DB__USERNAME=identity"
+      - "IDENTITY__DB__PASSWORD=identity"
+      - "IDENTITY__KAFKA__BROKERS=localhost:9092"
+      - "IDENTITY_WEB_BASE_URL=http://localhost:3000"
+    depends_on:
+      infra:
+        condition: process_healthy
+    readiness_probe:
+      exec:
+        command: "bash -c 'echo > /dev/tcp/localhost/50051'"
+      initial_delay_seconds: 10
+      period_seconds: 3
+      failure_threshold: 30
+
+  gateway:
+    command: "cargo run -p gateway"
+    environment:
+      - "GATEWAY__IDENTITY__ADDR=http://[::1]:50051"
+    depends_on:
+      identity:
+        condition: process_healthy
+    readiness_probe:
+      exec:
+        command: "curl -sf http://localhost:8080/healthz || curl -sf http://[::1]:8080/healthz"
+      initial_delay_seconds: 5
+      period_seconds: 3
+      failure_threshold: 20
+
+  web:
+    command: "cargo leptos serve"
+    environment:
+      - "WEB__GATEWAY__URL=http://[::1]:8080"
+    depends_on:
+      gateway:
+        condition: process_healthy
+    readiness_probe:
+      exec:
+        command: "curl -sf http://localhost:3000/"
+      initial_delay_seconds: 15
+      period_seconds: 3
+      failure_threshold: 30

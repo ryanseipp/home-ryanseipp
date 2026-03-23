@@ -68,7 +68,8 @@ export async function sendEmail(
       messageId: result.data?.id,
     };
   } catch (error) {
-    const errorMessage = error instanceof Error ? error.message : "Unknown error";
+    const errorMessage =
+      error instanceof Error ? error.message : "Unknown error";
 
     console.error("Failed to send email via Resend", {
       to,

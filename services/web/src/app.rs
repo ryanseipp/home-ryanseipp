@@ -19,7 +19,7 @@ fn set_csp_header() {
     if let (Some(resp), Some(nonce)) = (use_context::<ResponseOptions>(), use_nonce()) {
         let connect_src = if cfg!(debug_assertions) {
             // Allow WebSocket to cargo-leptos reload port in dev
-            "connect-src 'self' ws://localhost:3001"
+            "connect-src 'self' ws://localhost:3001 ws://127.0.0.1:3001"
         } else {
             "connect-src 'self'"
         };
@@ -60,7 +60,7 @@ pub fn shell(options: LeptosOptions) -> impl IntoView {
                 <HydrationScripts options />
                 <MetaTags />
             </head>
-            <body class="min-h-screen bg-background text-foreground antialiased">
+            <body class="min-h-screen antialiased bg-background text-foreground">
                 <App />
             </body>
         </html>
@@ -77,7 +77,7 @@ pub fn App() -> impl IntoView {
         <Title text="home.ryanseipp.com" />
 
         <Router>
-            <main class="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+            <main class="px-4 mx-auto max-w-7xl sm:px-6 lg:px-8">
                 <Routes fallback=|| NotFoundPage().into_view()>
                     <Route path=StaticSegment("") view=HomePage />
                     <Route path=StaticSegment("login") view=LoginPage />

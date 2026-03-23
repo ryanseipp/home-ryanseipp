@@ -24,12 +24,17 @@ const envSchema = z.object({
   OTEL_SERVICE_NAME: z.string().default("email-service"),
 
   // Logging
-  LOG_LEVEL: z.enum(["trace", "debug", "info", "warn", "error"]).default("info"),
+  LOG_LEVEL: z
+    .enum(["trace", "debug", "info", "warn", "error"])
+    .default("info"),
 });
 
 const parsed = envSchema.safeParse(Deno.env.toObject());
 if (!parsed.success) {
-  console.error("Invalid environment variables:", parsed.error.flatten().fieldErrors);
+  console.error(
+    "Invalid environment variables:",
+    parsed.error.flatten().fieldErrors,
+  );
   Deno.exit(1);
 }
 
@@ -44,10 +49,10 @@ export const config = {
     ssl: env.KAFKA_SSL,
     sasl: env.KAFKA_SASL_USERNAME
       ? {
-        mechanism: env.KAFKA_SASL_MECHANISM,
-        username: env.KAFKA_SASL_USERNAME,
-        password: env.KAFKA_SASL_PASSWORD,
-      }
+          mechanism: env.KAFKA_SASL_MECHANISM,
+          username: env.KAFKA_SASL_USERNAME,
+          password: env.KAFKA_SASL_PASSWORD,
+        }
       : undefined,
   },
   resend: {

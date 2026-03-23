@@ -14,10 +14,13 @@ const emailsFailedCounter = meter.createCounter("ryanseipp.email.failed", {
 });
 
 // Histograms - using seconds per OpenTelemetry semantic conventions
-const emailSendDuration = meter.createHistogram("ryanseipp.email.send.duration", {
-  description: "Duration of email send operations via Resend API",
-  unit: "s",
-});
+const emailSendDuration = meter.createHistogram(
+  "ryanseipp.email.send.duration",
+  {
+    description: "Duration of email send operations via Resend API",
+    unit: "s",
+  },
+);
 
 // Helper functions for recording metrics with attributes
 export function recordEmailSent(emailType: string, durationMs: number): void {
@@ -26,7 +29,11 @@ export function recordEmailSent(emailType: string, durationMs: number): void {
   emailSendDuration.record(durationMs / 1000, attributes);
 }
 
-export function recordEmailFailed(emailType: string, errorType: string, durationMs: number): void {
+export function recordEmailFailed(
+  emailType: string,
+  errorType: string,
+  durationMs: number,
+): void {
   const attributes = { "email.type": emailType, "error.type": errorType };
   emailsFailedCounter.add(1, attributes);
   emailSendDuration.record(durationMs / 1000, attributes);

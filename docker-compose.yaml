@@ -1,3 +1,11 @@
+x-spiffe-helper: &spiffe-helper
+  image: ghcr.io/spiffe/spiffe-helper:0.8.0
+  command: ["-config", "/etc/spiffe-helper.conf"]
+  depends_on:
+    spire-agent:
+      condition: service_healthy
+  pid: "host"
+
 services:
   postgres:
     image: postgres:17
@@ -7,16 +15,32 @@ services:
       POSTGRES_USER: identity
       POSTGRES_PASSWORD: identity
       POSTGRES_DB: identity
+    entrypoint:
+      - sh
+      - -c
+      - |
+        while [ ! -f /certs/svid_key.pem ]; do sleep 1; done
+        cp /certs/svid_key.pem /certs/svid_key_pg.pem && chown 999:999 /certs/svid_key_pg.pem && chmod 600 /certs/svid_key_pg.pem
+        exec docker-entrypoint.sh \
+          -c ssl=on \
+          -c ssl_cert_file=/certs/svid.pem \
+          -c ssl_key_file=/certs/svid_key_pg.pem \
+          -c ssl_ca_file=/certs/svid_bundle.pem
     volumes:
       - pgdata:/var/lib/postgresql/data
+      - postgres-certs:/certs
+    depends_on:
+      spiffe-helper-postgres:
+        condition: service_started
     healthcheck:
-      test: ["CMD", "pg_isready", "-U", "identity"]
+      test: ["CMD-SHELL", "test -f /certs/svid.pem && pg_isready -U identity"]
+      start_period: 30s
       interval: 2s
       timeout: 5s
       retries: 10
 
   kafka:
-    image: apache/kafka:3.9.0
+    image: apache/kafka:4.1.2
     ports:
       - "9092:9092"
     environment:
@@ -47,7 +71,7 @@ services:
   grafana:
     image: grafana/otel-lgtm:0.11.1
     ports:
-      - "3000:3000" # Grafana UI
+      - "3100:3000" # Grafana UI (remapped to avoid conflict with web service)
       - "4317:4317" # OTLP gRPC
       - "4318:4318" # OTLP HTTP
     volumes:
@@ -55,13 +79,30 @@ services:
 
   scylla:
     image: scylladb/scylla:2026.1.0
+    user: root
     ports:
       - "9042:9042"
-    command: --smp 1 --memory 512M --overprovisioned 1
+    entrypoint:
+      - bash
+      - -c
+      - |
+        while [ ! -f /certs/svid_key.pem ]; do sleep 1; done
+        cp /certs/svid_key.pem /certs/svid_key_local.pem && chmod 644 /certs/svid_key_local.pem
+        exec /docker-entrypoint.py \
+          --smp 1 --memory 512M --overprovisioned 1 \
+          --client-encryption-options enabled=true \
+          --client-encryption-options certificate=/certs/svid.pem \
+          --client-encryption-options keyfile=/certs/svid_key_local.pem \
+          --client-encryption-options truststore=/certs/svid_bundle.pem
     volumes:
       - scylla-data:/var/lib/scylla
+      - scylla-certs:/certs
+    depends_on:
+      spiffe-helper-scylla:
+        condition: service_started
     healthcheck:
-      test: ["CMD", "cqlsh", "-e", "DESCRIBE KEYSPACES"]
+      test: ["CMD-SHELL", "SSL_CERTFILE=/certs/svid_bundle.pem cqlsh --ssl -e 'DESCRIBE KEYSPACES'"]
+      start_period: 30s
       interval: 5s
       timeout: 5s
       retries: 10
@@ -71,9 +112,11 @@ services:
     command: ["-config", "/opt/spire/conf/server.conf"]
     ports:
       - "8081:8081"
+    tmpfs:
+      - /opt/spire/data:uid=1000,gid=1000
     volumes:
-      - ./spire/server.conf:/opt/spire/conf/server.conf:ro
-      - spire-data:/opt/spire/data
+      - ./local/spire/server.conf:/opt/spire/conf/server.conf:ro
+      - ./local/spire/agent-bootstrap.crt:/bootstrap/agent-bootstrap.crt:ro
     healthcheck:
       test: ["CMD", "/opt/spire/bin/spire-server", "healthcheck"]
       interval: 5s
@@ -87,7 +130,9 @@ services:
       spire-server:
         condition: service_healthy
     volumes:
-      - ./spire/agent.conf:/opt/spire/conf/agent.conf:ro
+      - ./local/spire/agent.conf:/opt/spire/conf/agent.conf:ro
+      - ./local/spire/agent-bootstrap.crt:/bootstrap/agent-bootstrap.crt:ro
+      - ./local/spire/agent-bootstrap.key:/bootstrap/agent-bootstrap.key:ro
       - spire-socket:/tmp/spire-agent/public
     pid: "host"
     healthcheck:
@@ -96,10 +141,36 @@ services:
       timeout: 5s
       retries: 10
 
+  spire-socket-bridge:
+    image: alpine/socat
+    command: "TCP-LISTEN:8443,fork,reuseaddr UNIX-CONNECT:/tmp/spire-agent/public/api.sock"
+    depends_on:
+      spire-agent:
+        condition: service_healthy
+    ports:
+      - "8443:8443"
+    volumes:
+      - spire-socket:/tmp/spire-agent/public
+
+  spiffe-helper-postgres:
+    <<: *spiffe-helper
+    volumes:
+      - spire-socket:/tmp/spire-agent/public
+      - postgres-certs:/certs
+      - ./local/spiffe-helper.conf:/etc/spiffe-helper.conf:ro
+
+  spiffe-helper-scylla:
+    <<: *spiffe-helper
+    volumes:
+      - spire-socket:/tmp/spire-agent/public
+      - scylla-certs:/certs
+      - ./local/spiffe-helper.conf:/etc/spiffe-helper.conf:ro
+
 volumes:
   pgdata:
   kafka-data:
   grafana:
   scylla-data:
-  spire-data:
   spire-socket:
+  postgres-certs:
+  scylla-certs:

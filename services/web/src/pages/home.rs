@@ -8,14 +8,14 @@ use crate::components::{Button, ButtonVariant};
 pub fn HomePage() -> impl IntoView {
     view! {
         <Title text="Home | home.ryanseipp.com" />
-        <div class="flex min-h-[80vh] flex-col items-center justify-center space-y-8">
+        <div class="flex flex-col justify-center items-center space-y-8 min-h-[80vh]">
             <h1 class="text-4xl font-bold tracking-tight sm:text-6xl">"Welcome"</h1>
-            <p class="max-w-2xl text-center text-lg text-muted-foreground">
+            <p class="max-w-2xl text-lg text-center text-muted-foreground">
                 "Your home on the web."
             </p>
             <div class="flex gap-4">
                 <a href="/sign-up">
-                    <Button>"Get Started"</Button>
+                    <Button>"Sign Up"</Button>
                 </a>
                 <a href="/login">
                     <Button variant=ButtonVariant::Outline>"Sign In"</Button>

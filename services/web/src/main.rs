@@ -67,7 +67,11 @@ async fn main() {
             ),
         ));
 
-    tracing::info!("listening on http://{addr}");
+    if addr.ip().is_unspecified() {
+        tracing::info!("listening on http://localhost:{}", addr.port());
+    } else {
+        tracing::info!("listening on http://{addr}");
+    }
     let listener = tokio::net::TcpListener::bind(&addr)
         .await
         .expect("failed to bind TCP listener");
